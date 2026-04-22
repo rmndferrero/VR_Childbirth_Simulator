@@ -4,8 +4,8 @@ using TMPro; // Required for TextMeshPro
 public class InstructionPrompt : MonoBehaviour
 {
     [Header("UI Elements")]
-    public GameObject instructionCanvas;
-    public TextMeshProUGUI instructionText;
+    public GameObject instructionCanvas; // Drag your Canvas or Panel here
+    public TextMeshProUGUI instructionText; // Drag your TextMeshPro text here
 
     [Header("Instructions")]
     [TextArea(3, 5)] // Makes the text boxes bigger in the Unity Inspector
@@ -14,53 +14,44 @@ public class InstructionPrompt : MonoBehaviour
 
     void Start()
     {
-        // Hide the canvas when the game starts
-        instructionCanvas.SetActive(false);
-
-        // Set the first message if we have any
-        if (messages.Length > 0)
-        {
-            instructionText.text = messages[0];
-        }
-    }
-
-    // This runs when the VR Player enters the table's trigger zone
-    private void OnTriggerEnter(Collider other)
-    {
-        // Make sure your VR Player/XR Origin is tagged as "Player"
-        if (other.CompareTag("Player"))
+        // 1. Make sure the Canvas is turned ON when the game starts
+        if (instructionCanvas != null)
         {
             instructionCanvas.SetActive(true);
         }
-    }
 
-    // This runs when the player walks away from the table
-    private void OnTriggerExit(Collider other)
-    {
-        if (other.CompareTag("Player"))
+        // 2. Show the first message immediately
+        if (messages.Length > 0)
         {
-            instructionCanvas.SetActive(false);
-            // Optional: Reset the text back to the beginning when they leave
             currentIndex = 0;
-            if (messages.Length > 0) instructionText.text = messages[0];
-        }
-    }
-
-    // This function will be called by your "Next" button
-    public void NextMessage()
-    {
-        currentIndex++;
-
-        // Check if we still have messages left to show
-        if (currentIndex < messages.Length)
-        {
-            instructionText.text = messages[currentIndex];
+            UpdateText();
         }
         else
         {
-            // If we are out of messages, hide the canvas
+            Debug.LogWarning("You forgot to add messages in the Inspector!");
+        }
+    }
+
+    // Call this if you want a "Next" button later
+    public void NextMessage()
+    {
+        if (currentIndex < messages.Length - 1)
+        {
+            currentIndex++;
+            UpdateText();
+        }
+        else
+        {
+            // Turn off the canvas when out of messages
             instructionCanvas.SetActive(false);
-            currentIndex = 0; // Reset for next time
+        }
+    }
+
+    private void UpdateText()
+    {
+        if (instructionText != null)
+        {
+            instructionText.text = messages[currentIndex];
         }
     }
 }
