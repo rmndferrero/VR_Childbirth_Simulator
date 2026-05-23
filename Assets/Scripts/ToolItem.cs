@@ -5,11 +5,10 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 [RequireComponent(typeof(XRGrabInteractable))]
 public class ToolItem : MonoBehaviour
 {
+    public string toolID; // Matches expectedID in ScriptableObject
     private Renderer rend;
     private Color originalColor;
-
     private XRGrabInteractable grab;
-    public VRDemoGameManager gameManager;
 
     void Awake()
     {
@@ -19,8 +18,6 @@ public class ToolItem : MonoBehaviour
             originalColor = rend.material.color;
 
         grab = GetComponent<XRGrabInteractable>();
-
-        // When player grabs tool
         grab.selectEntered.AddListener(OnGrab);
     }
 
@@ -32,33 +29,28 @@ public class ToolItem : MonoBehaviour
 
     private void OnGrab(SelectEnterEventArgs args)
     {
-        if (gameManager != null)
+        // Use the Singleton instance instead of a hardcoded reference
+        if (VRDemoGameManager.Instance != null)
         {
-            gameManager.CheckTool(this);
+            VRDemoGameManager.Instance.CheckTool(this);
         }
     }
 
     public void MarkCorrect()
     {
         if (rend != null)
-        {
             rend.material.color = new Color(0.4f, 1f, 0.4f); // green metallic
-        }
     }
 
     public void MarkWrong()
     {
         if (rend != null)
-        {
             rend.material.color = new Color(1f, 0.4f, 0.4f); // red metallic
-        }
     }
 
     public void ResetTool()
     {
         if (rend != null)
-        {
             rend.material.color = originalColor;
-        }
     }
 }
