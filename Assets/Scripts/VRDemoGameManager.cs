@@ -8,7 +8,7 @@ public class VRDemoGameManager : MonoBehaviour
     public static VRDemoGameManager Instance;
 
     [Header("Current Sequence")]
-    public SimulationStep currentStep; // The ScriptableObject dictating the current phase
+    public SimulationStep currentStep; // Optional: Used if you still want to track macro-scenario progress
 
     [Header("UI")]
     public TMP_Text feedbackText; // Your floating warning UI
@@ -18,35 +18,18 @@ public class VRDemoGameManager : MonoBehaviour
         Instance = this;
     }
 
-    // Called instantly when a Tool is grabbed (Tier 1 Check)
-    public void CheckTool(ToolItem tool)
-    {
-        if (currentStep == null) return;
-
-        if (tool.toolID == currentStep.expectedID)
-        {
-            tool.MarkCorrect();
-            feedbackText.text = "Correct tool selected. Please place it in the designated zone.";
-        }
-        else
-        {
-            tool.MarkWrong();
-            ShowWarning(currentStep.outOfSequenceWarning);
-        }
-    }
-
-    // Called by SocketValidator when dropped into the correct table slot (Tier 2 Check)
+    // Called ONLY by SocketValidator when dropped into the CORRECT table slot
     public void ReportCorrectAction(SimulationStep step)
     {
-        // Add score, update UI, advance to next checklist item
         feedbackText.text = "Correct Placement! " + step.stepName + " completed.";
 
-        // TODO: Logic to load the next SimulationStep in the scenario goes here
+        // Logic to track how many tools are placed on the Mayo table goes here
     }
 
+    // Called ONLY by SocketValidator when dropped into the WRONG table slot
     public void ShowWarning(string warning)
     {
         feedbackText.text = warning;
-        // Optionally add logic here to flash the text red or play an error sound
+        // Optionally add logic to flash the text red or play an error sound
     }
 }

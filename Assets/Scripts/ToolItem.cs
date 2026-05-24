@@ -5,7 +5,7 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 [RequireComponent(typeof(XRGrabInteractable))]
 public class ToolItem : MonoBehaviour
 {
-    public string toolID; // Matches expectedID in ScriptableObject
+    public string toolID; // Matches expectedID in the Socket's ScriptableObject
     private Renderer rend;
     private Color originalColor;
     private XRGrabInteractable grab;
@@ -18,22 +18,9 @@ public class ToolItem : MonoBehaviour
             originalColor = rend.material.color;
 
         grab = GetComponent<XRGrabInteractable>();
-        grab.selectEntered.AddListener(OnGrab);
-    }
 
-    private void OnDestroy()
-    {
-        if (grab != null)
-            grab.selectEntered.RemoveListener(OnGrab);
-    }
-
-    private void OnGrab(SelectEnterEventArgs args)
-    {
-        // Use the Singleton instance instead of a hardcoded reference
-        if (VRDemoGameManager.Instance != null)
-        {
-            VRDemoGameManager.Instance.CheckTool(this);
-        }
+        // WE HAVE REMOVED THE GRAB LISTENER. 
+        // The tool no longer triggers any validation when picked up.
     }
 
     public void MarkCorrect()
