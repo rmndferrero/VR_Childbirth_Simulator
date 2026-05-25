@@ -14,6 +14,5 @@ public class SimulationStep : ScriptableObject
 
     [Header("Decision Matrix Settings")]
     public string outOfSequenceWarning = "Incorrect timing. Please follow the clinical sequence.";
-    public int scoreReward = 10;
-    public int scorePenalty = -5;
+    public int penaltyPoints = 5; // Default deduction
 }
