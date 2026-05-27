@@ -1,0 +1,2 @@
+C:\Users\admin\Desktop\Simul\VR_Childbirth_Simulator\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp\CMakeLists.txt
+C:\Users\admin\Desktop\Simul\VR_Childbirth_Simulator\Library\Bee\Android\Prj\IL2CPP\Gradle\unityLibrary\src\main\cpp\GameActivity\CMakeLists.txt

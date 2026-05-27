@@ -1,0 +1,10 @@
+# ninja log v5
+45	3426	7995813225353806	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	b5dd3b795517a6eb
+57	3688	7995813227822463	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	2a60a28fd2921185
+70	3695	7995813228231422	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	cc7fa6aa06c7e05e
+23	3699	7995813228059685	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	d53db7c00adf086c
+1	3732	7995813229104338	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	c636fbbf9fc8b9a3
+34	4312	7995813234676097	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	47eceeafc3d3dbb1
+83	4384	7995813235414011	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	8a48af10e0bf6fcd
+12	4868	7995813240596302	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	fc58437df188bfb4
+4869	5255	7995813244518185	C:/Users/admin/Desktop/Simul/VR_Childbirth_Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/44gw6pw4/obj/arm64-v8a/libgame.so	367dfdaa104a192a
