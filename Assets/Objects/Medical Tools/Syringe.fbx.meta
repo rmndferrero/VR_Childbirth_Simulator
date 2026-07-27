@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 89f0582331f8e384a82a4ba788cdf767
+guid: 980043266bfee2e4395fddd438c24c90
 ModelImporter:
   serializedVersion: 22200
   internalIDToNameTable: []
@@ -7,8 +7,8 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: instrumenty
-    second: {fileID: 2100000, guid: 407c1d0ec49e68643aafdb76fc843877, type: 2}
+      name: Needles1.001
+    second: {fileID: 2100000, guid: ef09dec7dabd0d149bcbfc77bc026560, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
