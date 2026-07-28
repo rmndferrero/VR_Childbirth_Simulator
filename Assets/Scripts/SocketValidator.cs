@@ -19,30 +19,37 @@ public class SocketValidator : MonoBehaviour
 
     void OnSelectEntered(SelectEnterEventArgs args)
     {
-        var tool = args.interactableObject.transform.GetComponent<ToolItem>();
-
         if (isRejecting || hasBeenCompleted)
             return;
 
-        if (!hasBeenCompleted && tool != null && tool.toolID == requiredStep.expectedID)
+        // Safely get the ToolItem component from the incoming object
+        var tool = args.interactableObject.transform.GetComponent<ToolItem>();
+
+        // If the object doesn't even have a ToolItem script, ignore it entirely
+        if (tool == null)
+        {
+            Debug.LogWarning("An object without a ToolItem script was placed in the socket.");
+            return;
+        }
+
+        // Check if it matches the current expected step ID
+        if (tool.toolID == requiredStep.expectedID)
         {
             hasBeenCompleted = true;
 
             tool.MarkCorrect();
             VRDemoGameManager.Instance.ReportCorrectAction(requiredStep);
-            // Tell the GameManager to move to the next step or finish the phase
             VRDemoGameManager.Instance.AdvanceStep();
         }
         else
         {
             isRejecting = true;
 
-            // Trigger scoring penalty
+            // Trigger scoring penalty using the safe 'tool.toolID'
             VRDemoGameManager.Instance.RecordMistake(tool.toolID);
 
             // Trigger Haptics
             var controller = args.interactorObject.transform.GetComponent<ActionBasedController>();
-
             if (controller != null)
             {
                 controller.SendHapticImpulse(0.5f, 0.2f);
@@ -58,7 +65,7 @@ public class SocketValidator : MonoBehaviour
             Invoke(nameof(ResetRejectState), 0.5f);
         }
     }
-    
+
     private void ResetRejectState()
     {
         isRejecting = false;
