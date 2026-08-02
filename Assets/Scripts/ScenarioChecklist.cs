@@ -1,7 +1,7 @@
-using System.Collections.Generic;
 using UnityEngine;
+using System.Collections.Generic;
 
-[CreateAssetMenu(fileName = "NewScenarioChecklist", menuName = "VR Nursing Sim/Scenario Checklist")]
+[CreateAssetMenu(fileName = "NewScenarioChecklist", menuName = "VR Simulator/Scenario Checklist")]
 public class ScenarioChecklist : ScriptableObject
 {
     public string scenarioName;

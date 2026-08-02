@@ -2,12 +2,27 @@
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
+using System.IO;
+using System;
+
+[System.Serializable]
+public class SimulationRecord
+{
+    public string playerName;
+    public string dateCompleted;
+    public int finalScore;
+    public List<string> mistakesMade = new List<string>();
+}
 
 public class VRDemoGameManager : MonoBehaviour
 {
     public static VRDemoGameManager Instance;
 
-    private int currentStepIndex = 0; // Tracks which tool we are currently on
+    [Header("Player Data")]
+    public string currentPlayerName = "Guest";
+    private SimulationRecord currentRecord;
+
+    private int currentStepIndex = 0;
 
     [Header("Current Sequence")]
     public SimulationStep currentStep;
@@ -19,18 +34,22 @@ public class VRDemoGameManager : MonoBehaviour
     public int currentScenarioScore = 100;
 
     [Header("Scenario Progression")]
-    public int currentScenarioPhase = 1; // 1 = Mayo Prep, 2 = Patient Assessment
+    public int currentScenarioPhase = 1;
     public Dictionary<int, int> scenarioScores = new Dictionary<int, int>();
 
     [Header("Scenario 1: Mayo Preparation")]
-    [Tooltip("Drag your Step 1 through 4 ScriptableObjects here in order.")]
-    public List<SimulationStep> mayoPreparationSteps = new List<SimulationStep>();
+    // Updated to use your Master Container
+    public ScenarioChecklist mayoPreparationScenario;
+
+    [Header("Scenario 2: Patient Assessment / Dialogue")]
+    // Added reference to your Dialogue Scenario
+    public DialogueScenario patientAssessmentScenario;
 
     [Header("Scenario 2: References")]
     public GameObject patientAssessmentFloorHighlight;
 
-
     private HashSet<string> penalizedMistakes = new HashSet<string>();
+    private List<string> mistakeLog = new List<string>();
 
     void Awake()
     {
@@ -40,122 +59,154 @@ public class VRDemoGameManager : MonoBehaviour
 
     private void Start()
     {
-        // Initialize the first step when the game starts
-        if (mayoPreparationSteps != null && mayoPreparationSteps.Count > 0)
+        InitializeNewRecord();
+
+        // Load the first step from the Master Container
+        if (mayoPreparationScenario != null && mayoPreparationScenario.steps.Count > 0)
         {
-            currentStep = mayoPreparationSteps[0];
+            currentStep = mayoPreparationScenario.steps[0];
             Debug.Log($"[GameManager] Scenario started. Current Step: {currentStep.stepName}");
-            // TODO: Update your static HUD UI here with currentStep.instructionPrompt
-        }
-        else
-        {
-            Debug.LogWarning("[GameManager] Mayo Preparation Steps list is empty! Please assign them in the inspector.");
         }
     }
 
-    // Called ONLY by SocketValidator when dropped into the CORRECT table slot
+    public void SetPlayerName(string name)
+    {
+        currentPlayerName = name;
+        if (currentRecord != null) currentRecord.playerName = name;
+    }
+
+    private void InitializeNewRecord()
+    {
+        currentRecord = new SimulationRecord
+        {
+            playerName = currentPlayerName,
+            dateCompleted = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+            mistakesMade = mistakeLog
+        };
+    }
+
     public void ReportCorrectAction(SimulationStep step)
     {
-        feedbackText.text = "Correct Placement! " + step.stepName + " completed.";
+        if (feedbackText != null)
+            feedbackText.text = "Correct Placement! " + step.stepName + " completed.";
+
+        // Add this line to force the console to record the success!
+        Debug.Log($"[GameManager] Correct Placement! {step.stepName} completed.");
     }
 
-    // Called ONLY by SocketValidator when dropped into the WRONG table slot
-    public void ShowWarning(string warning)
+    public void ShowWarning(string wrongToolID)
     {
-        feedbackText.text = warning;
-        // Optionally add logic to flash the text red or play an error sound
+        if (currentStep == null || feedbackText == null) return;
+
+        string warningText = currentStep.outOfSequenceWarning;
+
+        // Matrix Algorithm: Search for tailored warning
+        foreach (var mistake in currentStep.penaltyMatrix)
+        {
+            if (mistake.wrongToolID.Trim() == wrongToolID.Trim())
+            {
+                warningText = mistake.specificWarning;
+                break;
+            }
+        }
+
+        feedbackText.text = warningText;
     }
 
-    /// Processes a mistake, deducting points only if it hasn't been made before.
     public void RecordMistake(string wrongToolID)
     {
         if (currentStep == null) return;
 
-        // NOTE: Make sure your SimulationStep.cs uses 'expectedID'. If it uses 'expectedToolID', update this line!
         string mistakeSignature = $"{currentStep.expectedID}_vs_{wrongToolID}";
 
-        // If this exact mistake hasn't been recorded yet, apply the penalty
         if (!penalizedMistakes.Contains(mistakeSignature))
         {
             penalizedMistakes.Add(mistakeSignature);
-            currentScenarioScore -= currentStep.penaltyPoints;
 
-            // Clamp score so it doesn't go below 0
+            mistakeLog.Add($"Failed to place {currentStep.expectedID}, used {wrongToolID} instead.");
+
+            // Matrix Algorithm: Calculate multiplier
+            int calculatedPenalty = currentStep.basePenaltyPoints;
+
+            foreach (var mistake in currentStep.penaltyMatrix)
+            {
+                if (mistake.wrongToolID.Trim() == wrongToolID.Trim())
+                {
+                    calculatedPenalty = Mathf.RoundToInt(calculatedPenalty * mistake.severityMultiplier);
+                    break;
+                }
+            }
+
+            currentScenarioScore -= calculatedPenalty;
             currentScenarioScore = Mathf.Max(0, currentScenarioScore);
 
-            Debug.Log($"[Scoring] Penalty Applied! Expected: {currentStep.expectedID}, Placed: {wrongToolID}. " +
-                      $"Deducted {currentStep.penaltyPoints} points. Current Mayo Table Score: {currentScenarioScore}");
-        }
-        else
-        {
-            Debug.Log($"[Scoring] Repeated mistake ignored: {mistakeSignature}. Score remains: {currentScenarioScore}");
+            Debug.Log($"[Scoring Matrix] Deducted {calculatedPenalty} points. Score: {currentScenarioScore}");
         }
     }
 
     public void AdvanceStep()
     {
-        // FIX: Increment the micro-step, NOT the macro-phase!
         currentStepIndex++;
 
-        // Check if there are more steps left in the Mayo phase
-        if (currentStepIndex < mayoPreparationSteps.Count)
+        if (mayoPreparationScenario != null && currentStepIndex < mayoPreparationScenario.steps.Count)
         {
-            // Load the next step
-            currentStep = mayoPreparationSteps[currentStepIndex];
-            Debug.Log($"[GameManager] Step advanced! New Step: {currentStep.stepName}");
-
-            // TODO: Update your static HUD UI here with the new currentStep.instructionPrompt
+            currentStep = mayoPreparationScenario.steps[currentStepIndex];
         }
         else
         {
-            // No steps left! Trigger the transition to Scenario 2.
             CompleteMayoPreparation();
-        }
-
-        if (currentStepIndex >= mayoPreparationSteps.Count)
-        {
-            Debug.LogWarning("[GameManager] AdvanceStep called after completion. Ignored.");
-            return;
         }
     }
 
     public void CompleteMayoPreparation()
     {
         scenarioScores[1] = currentScenarioScore;
-        Debug.Log($"[GameManager] Mayo Prep Complete! Final Score: {currentScenarioScore}");
-
-        currentScenarioPhase = 2; // NOW we advance the macro-phase
+        currentScenarioPhase = 2;
         ResetScenarioScore();
 
-        // Activate the trigger zone for Scenario 2
+        Debug.Log("[GameManager] Mayo Table Preparation Complete! Transitioning to Phase 2.");
+
         if (patientAssessmentFloorHighlight != null)
-        {
             patientAssessmentFloorHighlight.SetActive(true);
+
+        // Wake up the UI Controller and feed it Phase 2
+        if (DialogueUIController.Instance != null && patientAssessmentScenario != null)
+        {
+            DialogueUIController.Instance.StartDialogue(patientAssessmentScenario);
         }
         else
         {
-            Debug.LogWarning("[GameManager] Patient Assessment Floor Highlight is not assigned in the Inspector!");
+            Debug.LogWarning("[GameManager] Missing DialogueUIController or Patient Assessment Scenario!");
         }
     }
 
     public void CompletePatientAssessment()
     {
         scenarioScores[2] = currentScenarioScore;
-
-        Debug.Log($"[GameManager] Patient Assessment Complete! Final Score: {currentScenarioScore}");
-
         currentScenarioPhase = 3;
 
-        // Optional:
-        // Trigger next scenario here
-        // Show completion screen
-        // Save overall results
+        Debug.Log("[GameManager] Patient Assessment Complete! Saving Record.");
+        SaveRecordLocally();
     }
-    /// Call this when transitioning to a brand new scenario
+
     public void ResetScenarioScore()
     {
         currentScenarioScore = 100;
         penalizedMistakes.Clear();
-        Debug.Log("[Scoring] New Scenario started. Score reset to 100.");
+    }
+
+    private void SaveRecordLocally()
+    {
+        // Add robust check in case a scenario was skipped
+        int score1 = scenarioScores.ContainsKey(1) ? scenarioScores[1] : 0;
+        int score2 = scenarioScores.ContainsKey(2) ? scenarioScores[2] : 0;
+
+        currentRecord.finalScore = score1 + score2;
+
+        string jsonData = JsonUtility.ToJson(currentRecord, true);
+        string filePath = Path.Combine(Application.persistentDataPath, $"SimulationRecord_{DateTime.Now:yyyyMMdd_HHmmss}.json");
+
+        File.WriteAllText(filePath, jsonData);
+        Debug.Log($"[Storage] VR Session Data successfully saved to: {filePath}");
     }
 }
