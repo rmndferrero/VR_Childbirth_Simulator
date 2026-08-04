@@ -48,7 +48,12 @@ public class VRDemoGameManager : MonoBehaviour
     [Header("Scenario 2: References")]
     public GameObject patientAssessmentFloorHighlight;
 
+    [Header("Decision Matrix")]
+    [Tooltip("Global, phase-aware hazard/penalty matrix. Replaces per-step penaltyMatrix.")]
+    public GlobalHazardMatrix globalHazardMatrix;
+
     private HashSet<string> penalizedMistakes = new HashSet<string>();
+    private HashSet<string> heldToolPenalties = new HashSet<string>();
     private List<string> mistakeLog = new List<string>();
 
     void Awake()
@@ -100,14 +105,11 @@ public class VRDemoGameManager : MonoBehaviour
 
         string warningText = currentStep.outOfSequenceWarning;
 
-        // Matrix Algorithm: Search for tailored warning
-        foreach (var mistake in currentStep.penaltyMatrix)
+        // Global Decision Matrix: phase-aware lookup first
+        if (globalHazardMatrix != null &&
+            globalHazardMatrix.EvaluateHazard(wrongToolID, currentScenarioPhase, out int _, out string specificWarning))
         {
-            if (mistake.wrongToolID.Trim() == wrongToolID.Trim())
-            {
-                warningText = mistake.specificWarning;
-                break;
-            }
+            warningText = specificWarning;
         }
 
         feedbackText.text = warningText;
@@ -125,22 +127,49 @@ public class VRDemoGameManager : MonoBehaviour
 
             mistakeLog.Add($"Failed to place {currentStep.expectedID}, used {wrongToolID} instead.");
 
-            // Matrix Algorithm: Calculate multiplier
+            // Global Decision Matrix: phase-aware penalty lookup
             int calculatedPenalty = currentStep.basePenaltyPoints;
 
-            foreach (var mistake in currentStep.penaltyMatrix)
+            if (globalHazardMatrix != null &&
+                globalHazardMatrix.EvaluateHazard(wrongToolID, currentScenarioPhase, out int matrixPenalty, out string _))
             {
-                if (mistake.wrongToolID.Trim() == wrongToolID.Trim())
-                {
-                    calculatedPenalty = Mathf.RoundToInt(calculatedPenalty * mistake.severityMultiplier);
-                    break;
-                }
+                calculatedPenalty = matrixPenalty;
             }
 
             currentScenarioScore -= calculatedPenalty;
             currentScenarioScore = Mathf.Max(0, currentScenarioScore);
 
             Debug.Log($"[Scoring Matrix] Deducted {calculatedPenalty} points. Score: {currentScenarioScore}");
+        }
+    }
+
+    /// <summary>
+    /// Called when a tool is grabbed (held), regardless of scenario/socket state.
+    /// Checks the Global Hazard Matrix for the current phase - e.g. holding a scalpel
+    /// or curette during the Dialogue phase. Independent of currentStep, so this works
+    /// even in phases (like Phase 2) where currentStep is intentionally null.
+    /// </summary>
+    public void CheckHeldToolHazard(string heldToolID)
+    {
+        if (globalHazardMatrix == null) return;
+
+        string signature = $"phase{currentScenarioPhase}_{heldToolID}";
+
+        if (heldToolPenalties.Contains(signature)) return;
+
+        if (globalHazardMatrix.EvaluateHazard(heldToolID, currentScenarioPhase, out int penaltyPoints, out string specificWarning))
+        {
+            heldToolPenalties.Add(signature);
+
+            mistakeLog.Add($"Held hazardous tool '{heldToolID}' during Phase {currentScenarioPhase}.");
+
+            currentScenarioScore -= penaltyPoints;
+            currentScenarioScore = Mathf.Max(0, currentScenarioScore);
+
+            if (feedbackText != null)
+                feedbackText.text = specificWarning;
+
+            Debug.Log($"[Scoring Matrix] Held-tool hazard! Deducted {penaltyPoints} points. Score: {currentScenarioScore}");
         }
     }
 
@@ -162,6 +191,8 @@ public class VRDemoGameManager : MonoBehaviour
     {
         scenarioScores[1] = currentScenarioScore;
         currentScenarioPhase = 2;
+        currentStepIndex = 0;
+        currentStep = null; // clear stale Scenario 1 step so it can't leak into ShowWarning/RecordMistake
         ResetScenarioScore();
 
         Debug.Log("[GameManager] Mayo Table Preparation Complete! Transitioning to Phase 2.");
@@ -193,6 +224,7 @@ public class VRDemoGameManager : MonoBehaviour
     {
         currentScenarioScore = 100;
         penalizedMistakes.Clear();
+        heldToolPenalties.Clear();
     }
 
     private void SaveRecordLocally()

@@ -19,8 +19,22 @@ public class ToolItem : MonoBehaviour
 
         grab = GetComponent<XRGrabInteractable>();
 
-        // WE HAVE REMOVED THE GRAB LISTENER. 
-        // The tool no longer triggers any validation when picked up.
+        // Grab detection: reports to the GameManager whenever this tool is picked up,
+        // so held-tool hazards (e.g. scalpel/curette during Dialogue) can be evaluated
+        // via the Global Hazard Matrix, independent of socket placement.
+        grab.selectEntered.AddListener(OnGrabbed);
+    }
+
+    void OnDestroy()
+    {
+        if (grab != null)
+            grab.selectEntered.RemoveListener(OnGrabbed);
+    }
+
+    private void OnGrabbed(SelectEnterEventArgs args)
+    {
+        if (VRDemoGameManager.Instance != null)
+            VRDemoGameManager.Instance.CheckHeldToolHazard(toolID);
     }
 
     public void MarkCorrect()
