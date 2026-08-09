@@ -9,8 +9,12 @@ public class ToolSnapback : MonoBehaviour
     [Header("Snapback Settings")]
     public float snapbackDelay = 1.0f;
 
-    private Vector3 originPosition;
-    private Quaternion originRotation;
+    private Vector3 table1Position;
+    private Quaternion table1Rotation;
+    private Vector3 table2Position;
+    private Quaternion table2Rotation;
+    private bool isPlacedOnTable2 = false;
+
     private XRGrabInteractable grabInteractable;
     private Rigidbody rb;
     private Coroutine checkDropCoroutine;
@@ -19,19 +23,31 @@ public class ToolSnapback : MonoBehaviour
     {
         grabInteractable = GetComponent<XRGrabInteractable>();
         rb = GetComponent<Rigidbody>();
-        SaveOrigin(transform.position, transform.rotation);
+    }
+
+    private void Start()
+    {
+        // Capture initial position on Table 1
+        table1Position = transform.position;
+        table1Rotation = transform.rotation;
     }
 
     private void OnEnable()
     {
-        grabInteractable.selectEntered.AddListener(OnGrabbed);
-        grabInteractable.selectExited.AddListener(OnReleased);
+        if (grabInteractable != null)
+        {
+            grabInteractable.selectEntered.AddListener(OnGrabbed);
+            grabInteractable.selectExited.AddListener(OnReleased);
+        }
     }
 
     private void OnDisable()
     {
-        grabInteractable.selectEntered.RemoveListener(OnGrabbed);
-        grabInteractable.selectExited.RemoveListener(OnReleased);
+        if (grabInteractable != null)
+        {
+            grabInteractable.selectEntered.RemoveListener(OnGrabbed);
+            grabInteractable.selectExited.RemoveListener(OnReleased);
+        }
     }
 
     private void OnGrabbed(SelectEnterEventArgs args)
@@ -41,10 +57,30 @@ public class ToolSnapback : MonoBehaviour
 
     public void SaveOrigin(Vector3 newPos, Quaternion newRot)
     {
-        originPosition = newPos;
-        originRotation = newRot;
+        if (isPlacedOnTable2)
+        {
+            table2Position = newPos;
+            table2Rotation = newRot;
+        }
+        else
+        {
+            table1Position = newPos;
+            table1Rotation = newRot;
+        }
+        CancelDropTimer();
+    }
 
-        // Tool was successfully placed on Table 2, stop the snapback timer!
+    public void SaveTable2Origin(Vector3 newPos, Quaternion newRot)
+    {
+        table2Position = newPos;
+        table2Rotation = newRot;
+        isPlacedOnTable2 = true;
+        CancelDropTimer();
+    }
+
+    public void ResetToTable1()
+    {
+        isPlacedOnTable2 = false;
         CancelDropTimer();
     }
 
@@ -67,7 +103,7 @@ public class ToolSnapback : MonoBehaviour
     {
         yield return new WaitForSeconds(snapbackDelay);
 
-        if (!grabInteractable.isSelected)
+        if (grabInteractable != null && !grabInteractable.isSelected)
         {
             SnapBack();
         }
@@ -77,13 +113,18 @@ public class ToolSnapback : MonoBehaviour
 
     public void SnapBack()
     {
-        transform.position = originPosition;
-        transform.rotation = originRotation;
+        Vector3 targetPos = isPlacedOnTable2 ? table2Position : table1Position;
+        Quaternion targetRot = isPlacedOnTable2 ? table2Rotation : table1Rotation;
+
+        transform.position = targetPos;
+        transform.rotation = targetRot;
 
         if (rb != null)
         {
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
+
+        Physics.SyncTransforms();
     }
 }

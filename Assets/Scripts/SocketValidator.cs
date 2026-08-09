@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
@@ -10,6 +11,10 @@ public class SocketValidator : MonoBehaviour
     private bool hasBeenCompleted = false;
     private bool isRejecting = false;
 
+    [Header("Rejection Delay")]
+    [Tooltip("Delay in seconds that the wrong item stays red on Table 2 before being dropped back to Table 1.")]
+    public float rejectionDelay = 0.8f;
+
     void Awake()
     {
         socket = GetComponent<XRSocketInteractor>();
@@ -20,35 +25,75 @@ public class SocketValidator : MonoBehaviour
     {
         if (isRejecting || hasBeenCompleted) return;
 
-        var tool = args.interactableObject.transform.GetComponent<ToolItem>();
-        if (tool == null) return;
+        var tool = args.interactableObject.transform.GetComponent<ToolItem>() ??
+                   args.interactableObject.transform.GetComponentInParent<ToolItem>() ??
+                   args.interactableObject.transform.GetComponentInChildren<ToolItem>();
 
-        string currentlyExpectedID = VRDemoGameManager.Instance.currentStep.expectedID.Trim();
-        string placedToolID = tool.toolID.Trim();
+        if (tool == null)
+        {
+            if (socket != null && socket.interactionManager != null && args.interactableObject != null)
+            {
+                socket.interactionManager.SelectExit(socket, args.interactableObject);
+            }
+            return;
+        }
 
-        if (placedToolID == currentlyExpectedID)
+        string currentlyExpectedID = VRDemoGameManager.Instance != null && VRDemoGameManager.Instance.currentStep != null
+            ? VRDemoGameManager.Instance.currentStep.expectedID.Trim()
+            : "";
+
+        string placedToolID = tool.toolID != null ? tool.toolID.Trim() : "";
+
+        if (placedToolID.Equals(currentlyExpectedID, System.StringComparison.OrdinalIgnoreCase))
         {
             hasBeenCompleted = true;
             tool.MarkCorrect();
-            VRDemoGameManager.Instance.ReportCorrectAction(VRDemoGameManager.Instance.currentStep);
-            VRDemoGameManager.Instance.AdvanceStep();
+            tool.SaveTable2Origin(args.interactableObject.transform.position, args.interactableObject.transform.rotation);
+
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.ReportCorrectAction(VRDemoGameManager.Instance.currentStep);
+                VRDemoGameManager.Instance.AdvanceStep();
+            }
         }
         else
         {
             isRejecting = true;
-            VRDemoGameManager.Instance.RecordMistake(placedToolID);
 
-            var controller = args.interactorObject.transform.GetComponent<ActionBasedController>();
-            if (controller != null) controller.SendHapticImpulse(0.5f, 0.2f);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.RecordMistake(placedToolID);
+                VRDemoGameManager.Instance.ShowWarning(placedToolID);
+            }
 
-            socket.interactionManager.SelectExit(socket, args.interactableObject);
+            var inputInteractor = args.interactorObject as XRBaseInputInteractor ?? args.interactorObject?.transform.GetComponent<XRBaseInputInteractor>();
+            if (inputInteractor != null)
+            {
+                inputInteractor.SendHapticImpulse(0.5f, 0.2f);
+            }
+            else
+            {
+                var controller = args.interactorObject?.transform.GetComponent<XRBaseController>();
+                if (controller != null) controller.SendHapticImpulse(0.5f, 0.2f);
+            }
 
-            // Pass the specific wrong ID to the manager to fetch the tailored matrix warning
-            VRDemoGameManager.Instance.ShowWarning(placedToolID);
+            // Turn red immediately on Table 2
+            tool.MarkWrong();
 
-            Invoke(nameof(ResetRejectState), 0.5f);
+            // Wait for rejectionDelay (0.8s) so player sees red tool on Table 2, then kick it off back to Table 1
+            StartCoroutine(RejectAndSnapBackRoutine(tool));
         }
     }
 
-    private void ResetRejectState() { isRejecting = false; }
+    private IEnumerator RejectAndSnapBackRoutine(ToolItem tool)
+    {
+        yield return new WaitForSeconds(rejectionDelay);
+
+        if (tool != null)
+        {
+            tool.ReturnToOrigin(socket != null ? socket.interactionManager : null);
+        }
+
+        isRejecting = false;
+    }
 }
