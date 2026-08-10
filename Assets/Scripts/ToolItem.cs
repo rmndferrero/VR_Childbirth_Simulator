@@ -7,198 +7,253 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 public class ToolItem : MonoBehaviour
 {
-    public string toolID; // Matches expectedID in the Socket's ScriptableObject
+    [Header("Tool Configuration")]
+    public string toolID;
+
     private XRGrabInteractable grab;
     private Rigidbody rb;
 
+    // Visual feedback
     private Renderer[] allRenderers;
-    private Dictionary<Renderer, Color[]> originalColors = new Dictionary<Renderer, Color[]>();
+    private Dictionary<Renderer, Color[]> savedColors = new Dictionary<Renderer, Color[]>();
 
-    private Vector3 table1Position;
-    private Quaternion table1Rotation;
-    private Vector3 currentOriginPosition;
-    private Quaternion currentOriginRotation;
-    private bool table1OriginSaved = false;
+    // Table 1 home position + scale
+    private Vector3 homePos;
+    private Quaternion homeRot;
+    private Vector3 homeScale;
 
-    void Awake()
+    // State
+    private bool isLockedOnTable2 = false;
+    private bool isBeingRejected = false;
+    private Coroutine rejectCo;
+    private Coroutine dropCo;
+
+    private void Awake()
     {
-        // Store original colors for all renderers/materials in object hierarchy
+        grab = GetComponent<XRGrabInteractable>()
+            ?? GetComponentInParent<XRGrabInteractable>()
+            ?? GetComponentInChildren<XRGrabInteractable>();
+
+        rb = GetComponent<Rigidbody>()
+            ?? GetComponentInParent<Rigidbody>()
+            ?? GetComponentInChildren<Rigidbody>();
+
         allRenderers = GetComponentsInChildren<Renderer>();
         foreach (var r in allRenderers)
         {
-            if (r != null && r.materials != null)
+            if (r == null || r.materials == null) continue;
+            var cols = new Color[r.materials.Length];
+            for (int i = 0; i < r.materials.Length; i++)
             {
-                Color[] colors = new Color[r.materials.Length];
-                for (int i = 0; i < r.materials.Length; i++)
-                {
-                    var mat = r.materials[i];
-                    if (mat == null) continue;
-
-                    if (mat.HasProperty("_BaseColor"))
-                        colors[i] = mat.GetColor("_BaseColor");
-                    else if (mat.HasProperty("_Color"))
-                        colors[i] = mat.color;
-                    else
-                        colors[i] = Color.white;
-                }
-                originalColors[r] = colors;
+                var m = r.materials[i];
+                if (m == null) continue;
+                if (m.HasProperty("_BaseColor"))      cols[i] = m.GetColor("_BaseColor");
+                else if (m.HasProperty("_Color"))      cols[i] = m.color;
+                else                                   cols[i] = Color.white;
             }
+            savedColors[r] = cols;
         }
-
-        grab = GetComponent<XRGrabInteractable>() ?? GetComponentInParent<XRGrabInteractable>() ?? GetComponentInChildren<XRGrabInteractable>();
-        rb = GetComponent<Rigidbody>() ?? GetComponentInParent<Rigidbody>() ?? GetComponentInChildren<Rigidbody>();
 
         if (grab != null)
         {
             grab.selectEntered.AddListener(OnGrabbed);
+            grab.selectExited.AddListener(OnReleased);
         }
     }
 
-    void Start()
+    private void Start()
     {
-        if (!table1OriginSaved)
-        {
-            SaveTable1Origin();
-        }
+        homePos = transform.position;
+        homeRot = transform.rotation;
+        homeScale = transform.localScale;
     }
 
-    public void SaveTable1Origin()
-    {
-        table1Position = transform.position;
-        table1Rotation = transform.rotation;
-        currentOriginPosition = table1Position;
-        currentOriginRotation = table1Rotation;
-        table1OriginSaved = true;
-
-        var snapback = GetComponent<ToolSnapback>() ?? GetComponentInParent<ToolSnapback>() ?? GetComponentInChildren<ToolSnapback>();
-        if (snapback != null)
-        {
-            snapback.ResetToTable1();
-        }
-    }
-
-    public void SaveTable2Origin(Vector3 pos, Quaternion rot)
-    {
-        currentOriginPosition = pos;
-        currentOriginRotation = rot;
-
-        var snapback = GetComponent<ToolSnapback>() ?? GetComponentInParent<ToolSnapback>() ?? GetComponentInChildren<ToolSnapback>();
-        if (snapback != null)
-        {
-            snapback.SaveTable2Origin(pos, rot);
-        }
-    }
-
-    public void ResetOriginToTable1()
-    {
-        currentOriginPosition = table1Position;
-        currentOriginRotation = table1Rotation;
-
-        var snapback = GetComponent<ToolSnapback>() ?? GetComponentInParent<ToolSnapback>() ?? GetComponentInChildren<ToolSnapback>();
-        if (snapback != null)
-        {
-            snapback.ResetToTable1();
-        }
-    }
-
-    public void ReturnToOrigin(XRInteractionManager interactionManager = null)
-    {
-        ResetOriginToTable1();
-
-        if (grab != null && interactionManager != null)
-        {
-            var interactors = new List<IXRSelectInteractor>(grab.interactorsSelecting);
-            foreach (var interactor in interactors)
-            {
-                interactionManager.SelectExit(interactor, grab);
-            }
-        }
-
-        StartCoroutine(SnapToOriginRoutine());
-    }
-
-    private IEnumerator SnapToOriginRoutine()
-    {
-        yield return new WaitForEndOfFrame();
-
-        var snapback = GetComponent<ToolSnapback>() ?? GetComponentInParent<ToolSnapback>() ?? GetComponentInChildren<ToolSnapback>();
-        if (snapback != null)
-        {
-            snapback.SnapBack();
-        }
-
-        transform.position = table1Position;
-        transform.rotation = table1Rotation;
-
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
-
-        Physics.SyncTransforms();
-
-        Invoke(nameof(ResetTool), 0.6f);
-    }
-
-    void OnDestroy()
+    private void OnDestroy()
     {
         if (grab != null)
+        {
             grab.selectEntered.RemoveListener(OnGrabbed);
+            grab.selectExited.RemoveListener(OnReleased);
+        }
     }
+
+    // ── XR Events ──
 
     private void OnGrabbed(SelectEnterEventArgs args)
     {
+        // NEVER cancel a running rejection — only cancel the mid-air drop timer
+        if (!isBeingRejected)
+        {
+            CancelDropTimer();
+        }
+
         if (VRDemoGameManager.Instance != null)
             VRDemoGameManager.Instance.CheckHeldToolHazard(toolID);
     }
 
-    public void MarkCorrect()
+    private void OnReleased(SelectExitEventArgs args)
     {
-        SetToolColor(new Color(0.3f, 1f, 0.3f, 1f)); // Vivid green across all renderers
+        // Don't interfere with rejection or if already on Table 2
+        if (isBeingRejected || isLockedOnTable2) return;
+
+        CancelDropTimer();
+        dropCo = StartCoroutine(DropTimerRoutine());
     }
 
-    public void MarkWrong()
+    private void CancelDropTimer()
     {
-        SetToolColor(new Color(1f, 0.2f, 0.2f, 1f)); // Vivid red across all renderers
+        if (dropCo != null)
+        {
+            StopCoroutine(dropCo);
+            dropCo = null;
+        }
     }
 
-    private void SetToolColor(Color targetColor)
+    private IEnumerator DropTimerRoutine()
+    {
+        yield return new WaitForSeconds(1.2f);
+        if (grab != null && !grab.isSelected && !isLockedOnTable2 && !isBeingRejected)
+            WarpHome();
+        dropCo = null;
+    }
+
+    // ── Correct Placement ──
+
+    public void MarkCorrect(Vector3 slotPos, Quaternion slotRot)
+    {
+        CancelDropTimer();
+        isLockedOnTable2 = true;
+        isBeingRejected = false;
+        Tint(new Color(0.3f, 1f, 0.3f));
+    }
+
+    // ── Wrong Placement ──
+
+    public void HandleWrongPlacement(XRSocketInteractor socket, float redDuration)
+    {
+        CancelDropTimer();
+        isBeingRejected = true;
+
+        if (rejectCo != null)
+            StopCoroutine(rejectCo);
+
+        rejectCo = StartCoroutine(RejectRoutine(socket, redDuration));
+    }
+
+    private IEnumerator RejectRoutine(XRSocketInteractor socket, float redDuration)
+    {
+        // 1. Flash red while sitting in socket
+        Tint(new Color(1f, 0.2f, 0.2f));
+
+        // 2. Wait so player sees red feedback
+        yield return new WaitForSeconds(redDuration);
+
+        // 3. Disable grab interactable so socket CANNOT re-select after exit
+        if (grab != null)
+            grab.enabled = false;
+
+        // 4. Force exit from all interactors (socket + any hand controllers)
+        if (grab != null)
+        {
+            var mgr = (socket != null) ? socket.interactionManager : grab.interactionManager;
+            if (mgr != null)
+            {
+                var holders = new List<IXRSelectInteractor>(grab.interactorsSelecting);
+                foreach (var h in holders)
+                    mgr.SelectExit(h, grab);
+            }
+        }
+
+        // 5. Wait for XRI cleanup
+        yield return null;
+        yield return new WaitForFixedUpdate();
+
+        // 6. Teleport to Table 1
+        WarpHome();
+
+        // 7. Restore colors and re-enable grab
+        yield return new WaitForSeconds(0.3f);
+        RestoreColors();
+
+        if (grab != null)
+            grab.enabled = true;
+
+        // 8. Wait a frame then force scale again — XRI may override scale on re-enable
+        yield return null;
+        transform.localScale = homeScale;
+
+        isBeingRejected = false;
+        rejectCo = null;
+    }
+
+    // ── Warp ──
+
+    private void WarpHome()
+    {
+        isLockedOnTable2 = false;
+
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        transform.position = homePos;
+        transform.rotation = homeRot;
+        transform.localScale = homeScale;
+
+        if (rb != null)
+        {
+            rb.position = homePos;
+            rb.rotation = homeRot;
+        }
+
+        Physics.SyncTransforms();
+
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+    }
+
+    // Compatibility
+    public void TeleportToTable1() => WarpHome();
+    public void SaveTable2Origin(Vector3 p, Quaternion r) { isLockedOnTable2 = true; }
+    public void ResetOriginToTable1() { isLockedOnTable2 = false; }
+
+    // ── Color helpers ──
+
+    private void Tint(Color c)
     {
         if (allRenderers == null) return;
-
         foreach (var r in allRenderers)
         {
             if (r == null || r.materials == null) continue;
-            foreach (var mat in r.materials)
+            foreach (var m in r.materials)
             {
-                if (mat == null) continue;
-                if (mat.HasProperty("_BaseColor"))
-                    mat.SetColor("_BaseColor", targetColor);
-                if (mat.HasProperty("_Color"))
-                    mat.color = targetColor;
+                if (m == null) continue;
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                if (m.HasProperty("_Color"))     m.color = c;
             }
         }
     }
 
-    public void ResetTool()
+    public void RestoreColors()
     {
         if (allRenderers == null) return;
-
         foreach (var r in allRenderers)
         {
             if (r == null || r.materials == null) continue;
-            if (originalColors.TryGetValue(r, out Color[] colors))
+            if (!savedColors.TryGetValue(r, out var cols)) continue;
+            for (int i = 0; i < r.materials.Length && i < cols.Length; i++)
             {
-                for (int i = 0; i < r.materials.Length && i < colors.Length; i++)
-                {
-                    var mat = r.materials[i];
-                    if (mat == null) continue;
-                    if (mat.HasProperty("_BaseColor"))
-                        mat.SetColor("_BaseColor", colors[i]);
-                    if (mat.HasProperty("_Color"))
-                        mat.color = colors[i];
-                }
+                var m = r.materials[i];
+                if (m == null) continue;
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cols[i]);
+                if (m.HasProperty("_Color"))     m.color = cols[i];
             }
         }
     }
