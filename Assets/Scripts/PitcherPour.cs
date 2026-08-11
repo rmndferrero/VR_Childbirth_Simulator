@@ -2,10 +2,16 @@ using UnityEngine;
 
 public class PitcherPour : MonoBehaviour
 {
-    [Header("Pour Settings")]
+    [Header("Visual Settings")]
     public ParticleSystem waterParticleSystem;
     public float pourAngleThreshold = 45f; // Starts pouring when tilted 45 degrees
     public float emissionRate = 50f;       // How much water pours out
+
+    [Header("Mechanical Settings")]
+    [Tooltip("Where the invisible cleaning raycast shoots from (e.g., the spout).")]
+    public Transform spoutOrigin;
+    [Tooltip("How far down the water reaches to clean.")]
+    public float pourDistance = 1.5f;
 
     private ParticleSystem.EmissionModule emissionModule;
     private bool isPouring = false;
@@ -24,6 +30,9 @@ public class PitcherPour : MonoBehaviour
         if (tiltAngle > pourAngleThreshold)
         {
             if (!isPouring) StartPouring();
+            
+            // If we are pouring, fire the cleaning raycast every frame
+            CastWaterRay();
         }
         else
         {
@@ -36,7 +45,7 @@ public class PitcherPour : MonoBehaviour
         isPouring = true;
         emissionModule.rateOverTime = emissionRate;
 
-        // Add this line: Force the system to play if it was stopped
+        // Force the system to play if it was stopped
         if (!waterParticleSystem.isPlaying)
         {
             waterParticleSystem.Play();
@@ -47,6 +56,25 @@ public class PitcherPour : MonoBehaviour
     {
         isPouring = false;
         emissionModule.rateOverTime = 0f;
-        // Optional: Stop sound effect here
+    }
+
+    private void CastWaterRay()
+    {
+        // Draw an invisible line straight down from the spout to mimic gravity
+        Ray ray = new Ray(spoutOrigin.position, Vector3.down);
+        RaycastHit hit;
+
+        // Cast the ray. Ensure "Queries Hit Triggers" is enabled in Physics Settings!
+        if (Physics.Raycast(ray, out hit, pourDistance))
+        {
+            // Check if the object we hit has the CleaningZone script attached
+            CleaningZone zone = hit.collider.GetComponent<CleaningZone>();
+            
+            if (zone != null)
+            {
+                // Wash away the blood!
+                zone.WashWithWater();
+            }
+        }
     }
 }
