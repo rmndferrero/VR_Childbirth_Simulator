@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
@@ -51,6 +51,10 @@ public class VRDemoGameManager : MonoBehaviour
     [Header("Decision Matrix")]
     [Tooltip("Global, phase-aware hazard/penalty matrix. Replaces per-step penaltyMatrix.")]
     public GlobalHazardMatrix globalHazardMatrix;
+
+    [Header("Checklist UI")]
+    [Tooltip("Reference to the HandChecklistManager on the hand canvas.")]
+    public HandChecklistManager handChecklist;
 
     private HashSet<string> penalizedMistakes = new HashSet<string>();
     private HashSet<string> heldToolPenalties = new HashSet<string>();
@@ -196,6 +200,10 @@ public class VRDemoGameManager : MonoBehaviour
         ResetScenarioScore();
 
         Debug.Log("[GameManager] Mayo Table Preparation Complete! Transitioning to Phase 2.");
+
+        // Notify checklist that Phase 1 is done — unlocks the "Set the Table" checkbox
+        if (handChecklist != null)
+            handChecklist.UnlockTask("Set the Table");
 
         if (patientAssessmentFloorHighlight != null)
             patientAssessmentFloorHighlight.SetActive(true);

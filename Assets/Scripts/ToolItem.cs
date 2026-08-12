@@ -28,8 +28,14 @@ public class ToolItem : MonoBehaviour
     private Coroutine rejectCo;
     private Coroutine dropCo;
 
+    // Static registry to prevent tools from colliding with / bumping each other
+    private static HashSet<ToolItem> allToolsInScene = new HashSet<ToolItem>();
+    private Collider[] myColliders;
+
     private void Awake()
     {
+        allToolsInScene.Add(this);
+
         grab = GetComponent<XRGrabInteractable>()
             ?? GetComponentInParent<XRGrabInteractable>()
             ?? GetComponentInChildren<XRGrabInteractable>();
@@ -66,10 +72,41 @@ public class ToolItem : MonoBehaviour
         homePos = transform.position;
         homeRot = transform.rotation;
         homeScale = transform.localScale;
+
+        IgnoreCollisionsWithOtherTools();
+    }
+
+    /// <summary>
+    /// Disables physics collisions between all tools in the scene so they never bump, push, or knock each other over.
+    /// </summary>
+    private void IgnoreCollisionsWithOtherTools()
+    {
+        myColliders = GetComponentsInChildren<Collider>();
+        if (myColliders == null || myColliders.Length == 0) return;
+
+        foreach (var otherTool in allToolsInScene)
+        {
+            if (otherTool == null || otherTool == this) continue;
+
+            Collider[] otherColliders = otherTool.myColliders ?? otherTool.GetComponentsInChildren<Collider>();
+            if (otherColliders == null) continue;
+
+            foreach (var myCol in myColliders)
+            {
+                if (myCol == null) continue;
+                foreach (var otherCol in otherColliders)
+                {
+                    if (otherCol == null) continue;
+                    Physics.IgnoreCollision(myCol, otherCol, true);
+                }
+            }
+        }
     }
 
     private void OnDestroy()
     {
+        allToolsInScene.Remove(this);
+
         if (grab != null)
         {
             grab.selectEntered.RemoveListener(OnGrabbed);
@@ -81,7 +118,6 @@ public class ToolItem : MonoBehaviour
 
     private void OnGrabbed(SelectEnterEventArgs args)
     {
-        // NEVER cancel a running rejection — only cancel the mid-air drop timer
         if (!isBeingRejected)
         {
             CancelDropTimer();
@@ -93,7 +129,6 @@ public class ToolItem : MonoBehaviour
 
     private void OnReleased(SelectExitEventArgs args)
     {
-        // Don't interfere with rejection or if already on Table 2
         if (isBeingRejected || isLockedOnTable2) return;
 
         CancelDropTimer();
@@ -178,7 +213,6 @@ public class ToolItem : MonoBehaviour
         if (grab != null)
             grab.enabled = true;
 
-        // 8. Wait a frame then force scale again — XRI may override scale on re-enable
         yield return null;
         transform.localScale = homeScale;
 
