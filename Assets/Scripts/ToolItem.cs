@@ -28,7 +28,7 @@ public class ToolItem : MonoBehaviour
     private Coroutine rejectCo;
     private Coroutine dropCo;
 
-    // Static registry to prevent tools from colliding with / bumping each other
+    // Static registry to prevent tools from colliding with / bumping each other or player
     private static HashSet<ToolItem> allToolsInScene = new HashSet<ToolItem>();
     private Collider[] myColliders;
 
@@ -73,17 +73,26 @@ public class ToolItem : MonoBehaviour
         homeRot = transform.rotation;
         homeScale = transform.localScale;
 
-        IgnoreCollisionsWithOtherTools();
+        // Lock kinematic while resting on table so player physical collisions cannot push or knock over tools
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        IgnoreCollisionsWithOtherToolsAndPlayer();
     }
 
     /// <summary>
-    /// Disables physics collisions between all tools in the scene so they never bump, push, or knock each other over.
+    /// Disables physics collisions between tools and between tools and player body colliders.
     /// </summary>
-    private void IgnoreCollisionsWithOtherTools()
+    private void IgnoreCollisionsWithOtherToolsAndPlayer()
     {
         myColliders = GetComponentsInChildren<Collider>();
         if (myColliders == null || myColliders.Length == 0) return;
 
+        // Ignore collisions with other tools
         foreach (var otherTool in allToolsInScene)
         {
             if (otherTool == null || otherTool == this) continue;
@@ -99,6 +108,18 @@ public class ToolItem : MonoBehaviour
                     if (otherCol == null) continue;
                     Physics.IgnoreCollision(myCol, otherCol, true);
                 }
+            }
+        }
+
+        // Ignore collisions with player body / CharacterController colliders
+        CharacterController[] playerControllers = FindObjectsOfType<CharacterController>();
+        foreach (var cc in playerControllers)
+        {
+            if (cc == null) continue;
+            foreach (var myCol in myColliders)
+            {
+                if (myCol == null) continue;
+                Physics.IgnoreCollision(myCol, cc, true);
             }
         }
     }
@@ -123,12 +144,26 @@ public class ToolItem : MonoBehaviour
             CancelDropTimer();
         }
 
+        // Enable physics movement while held by player hand
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+        }
+
         if (VRDemoGameManager.Instance != null)
             VRDemoGameManager.Instance.CheckHeldToolHazard(toolID);
     }
 
     private void OnReleased(SelectExitEventArgs args)
     {
+        // Immediately lock kinematic on release so tool cannot roll, drift, or fall
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
         if (isBeingRejected || isLockedOnTable2) return;
 
         CancelDropTimer();
@@ -159,6 +194,15 @@ public class ToolItem : MonoBehaviour
         CancelDropTimer();
         isLockedOnTable2 = true;
         isBeingRejected = false;
+
+        // Lock kinematic on Table 2
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
         Tint(new Color(0.3f, 1f, 0.3f));
     }
 
@@ -241,16 +285,10 @@ public class ToolItem : MonoBehaviour
         {
             rb.position = homePos;
             rb.rotation = homeRot;
+            rb.isKinematic = true; // Lock kinematic resting on Table 1
         }
 
         Physics.SyncTransforms();
-
-        if (rb != null)
-        {
-            rb.isKinematic = false;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
     }
 
     // Compatibility
