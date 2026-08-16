@@ -144,7 +144,7 @@ public class ToolItem : MonoBehaviour
             CancelDropTimer();
         }
 
-        // Enable physics movement while held by player hand
+        // Enable dynamic physics while held by player hand
         if (rb != null)
         {
             rb.isKinematic = false;
@@ -156,15 +156,14 @@ public class ToolItem : MonoBehaviour
 
     private void OnReleased(SelectExitEventArgs args)
     {
-        // Immediately lock kinematic on release so tool cannot roll, drift, or fall
+        if (isBeingRejected || isLockedOnTable2) return;
+
+        // Enable physics gravity so the tool falls naturally when dropped in mid-air
         if (rb != null)
         {
-            rb.isKinematic = true;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
+            rb.isKinematic = false;
+            rb.useGravity = true;
         }
-
-        if (isBeingRejected || isLockedOnTable2) return;
 
         CancelDropTimer();
         dropCo = StartCoroutine(DropTimerRoutine());
@@ -179,11 +178,16 @@ public class ToolItem : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Lets the tool drop/fall under gravity for 1.2s, then snaps it back to Table 1 if unheld.
+    /// </summary>
     private IEnumerator DropTimerRoutine()
     {
         yield return new WaitForSeconds(1.2f);
         if (grab != null && !grab.isSelected && !isLockedOnTable2 && !isBeingRejected)
+        {
             WarpHome();
+        }
         dropCo = null;
     }
 
@@ -195,7 +199,7 @@ public class ToolItem : MonoBehaviour
         isLockedOnTable2 = true;
         isBeingRejected = false;
 
-        // Lock kinematic on Table 2
+        // Lock kinematic on Table 2 so it won't move when player gets near
         if (rb != null)
         {
             rb.isKinematic = true;
