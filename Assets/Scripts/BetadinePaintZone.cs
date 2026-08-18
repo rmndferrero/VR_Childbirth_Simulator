@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class BetadinePaintZone : MonoBehaviour
 {
@@ -9,16 +10,16 @@ public class BetadinePaintZone : MonoBehaviour
     [Tooltip("How far the cotton must move (in meters) to drop the next dot of paint.")]
     public float paintSpacing = 0.015f;
 
-    private Vector3 lastPaintPosition;
+    // Tracks which grid cells have already been painted so strokes don't stack/darken
+    // when the player passes back over an already-painted area.
+    private HashSet<Vector3Int> paintedCells = new HashSet<Vector3Int>();
 
     void Start()
     {
         // We want the shell to act as an invisible boundary, not a visible object.
-        MeshRenderer renderer = GetComponent<MeshRenderer>();
-        if (renderer != null)
-        {
-            renderer.enabled = false;
-        }
+        // NOTE: this shell uses a Skinned Mesh Renderer, not a regular Mesh Renderer,
+        // so we grab the base Renderer type to make sure it's actually found and disabled.
+        Renderer meshRenderer = GetComponent<Renderer>();
     }
 
     private void OnTriggerStay(Collider other)
@@ -32,15 +33,31 @@ public class BetadinePaintZone : MonoBehaviour
             if (cotton != null && cotton.isSoaked)
             {
                 Vector3 currentPos = other.transform.position;
+                Vector3Int cell = WorldToCell(currentPos);
 
-                // Check the distance. If it moved more than the spacing, drop paint!
-                if (Vector3.Distance(currentPos, lastPaintPosition) > paintSpacing)
+                // Only paint if this grid cell hasn't been painted before.
+                // This alone both spaces out dabs AND stops overlapping/backtracking
+                // strokes from stacking opacity - no separate distance check needed.
+                if (!paintedCells.Contains(cell))
                 {
                     DropPaintDab(currentPos);
-                    lastPaintPosition = currentPos;
+                    paintedCells.Add(cell);
                 }
             }
         }
+    }
+
+    // Quantizes world position into a grid cell sized to the brush spacing.
+    // Using local space (relative to the shell) keeps cells stable even if the mother/shell moves.
+    private Vector3Int WorldToCell(Vector3 worldPos)
+    {
+        Vector3 local = transform.InverseTransformPoint(worldPos);
+        float cellSize = paintSpacing;
+        return new Vector3Int(
+            Mathf.RoundToInt(local.x / cellSize),
+            Mathf.RoundToInt(local.y / cellSize),
+            Mathf.RoundToInt(local.z / cellSize)
+        );
     }
 
     private void DropPaintDab(Vector3 position)
