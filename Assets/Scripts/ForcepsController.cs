@@ -20,6 +20,14 @@ public class ForcepsController : MonoBehaviour
     [Tooltip("Select the Right Hand Primary Button (A Button).")]
     public InputActionReference rightPrimaryButton;
 
+    [Header("Spawning System")]
+    [Tooltip("Drag your Cotton Ball Prefab here from the Project window.")]
+    public GameObject cottonPrefab;
+
+    // Controlled by the CottonJarZone script
+    [HideInInspector] public bool isInJarZone = false;
+    private bool isSpawning = false;
+
     private bool isHeldByLeftHand = false;
     private bool isHeldByRightHand = false;
 
@@ -92,6 +100,12 @@ public class ForcepsController : MonoBehaviour
         if (isPressingButton)
         {
             cottonSocket.socketActive = true;
+
+            // NEW LOGIC: If holding the button while inside the jar, and socket is empty, spawn!
+            if (isInJarZone && !cottonSocket.hasSelection && !isSpawning)
+            {
+                SpawnCotton();
+            }
         }
         else
         {
@@ -102,6 +116,29 @@ public class ForcepsController : MonoBehaviour
             }
             cottonSocket.socketActive = false;
         }
+    }
+
+    private void SpawnCotton()
+    {
+        if (cottonPrefab == null)
+        {
+            Debug.LogError("[Forceps] Cotton Prefab is missing! Drag it into the Inspector.");
+            return;
+        }
+
+        isSpawning = true;
+
+        // Spawn the cotton exactly inside the socket
+        Instantiate(cottonPrefab, cottonSocket.transform.position, cottonSocket.transform.rotation);
+        Debug.Log("[Forceps] New cotton spawned from the jar.");
+
+        // Wait half a second before allowing another spawn, giving the XRI socket time to attach
+        Invoke(nameof(ResetSpawnCooldown), 0.5f);
+    }
+
+    private void ResetSpawnCooldown()
+    {
+        isSpawning = false;
     }
 
     private void DropCotton()

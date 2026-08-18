@@ -5,6 +5,9 @@ public class CottonState : MonoBehaviour
     [Tooltip("Is this cotton ball soaked in Betadine?")]
     public bool isSoaked = false;
 
+    [Tooltip("Has this cotton ball already touched the skin?")]
+    public bool isUsed = false; // NEW FLAG
+
     private MeshRenderer meshRenderer;
 
     void Awake()
@@ -12,9 +15,6 @@ public class CottonState : MonoBehaviour
         meshRenderer = GetComponent<MeshRenderer>();
     }
 
-    /// <summary>
-    /// Changes the cotton's material and marks it as soaked.
-    /// </summary>
     public void SoakCotton(Material soakedMaterial)
     {
         if (!isSoaked && meshRenderer != null && soakedMaterial != null)
