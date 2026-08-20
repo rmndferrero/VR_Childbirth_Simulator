@@ -15,9 +15,9 @@ public class BetadinePaintZone : MonoBehaviour
     {
         // Make the shell visible for testing
         Renderer meshRenderer = GetComponent<Renderer>();
-        //if (meshRenderer != null)
-        //{
-        //    meshRenderer.enabled = false;
+       // if (meshRenderer != null)
+       // {
+         //meshRenderer.enabled = false;
        // }
     }
 
