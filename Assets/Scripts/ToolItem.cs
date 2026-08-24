@@ -22,6 +22,10 @@ public class ToolItem : MonoBehaviour
     private Quaternion homeRot;
     private Vector3 homeScale;
 
+    // Table 2 locked position
+    private Vector3 table2Pos;
+    private Quaternion table2Rot;
+
     // State
     private bool isLockedOnTable2 = false;
     private bool isBeingRejected = false;
@@ -156,7 +160,7 @@ public class ToolItem : MonoBehaviour
 
     private void OnReleased(SelectExitEventArgs args)
     {
-        if (isBeingRejected || isLockedOnTable2) return;
+        if (isBeingRejected) return;
 
         // Enable physics gravity so the tool falls naturally when dropped in mid-air
         if (rb != null)
@@ -179,14 +183,21 @@ public class ToolItem : MonoBehaviour
     }
 
     /// <summary>
-    /// Lets the tool drop/fall under gravity for 1.2s, then snaps it back to Table 1 if unheld.
+    /// Lets the tool drop/fall under gravity for 1.2s, then snaps it back to its current table if unheld.
     /// </summary>
     private IEnumerator DropTimerRoutine()
     {
         yield return new WaitForSeconds(1.2f);
-        if (grab != null && !grab.isSelected && !isLockedOnTable2 && !isBeingRejected)
+        if (grab != null && !grab.isSelected && !isBeingRejected)
         {
-            WarpHome();
+            if (isLockedOnTable2)
+            {
+                WarpToTable2();
+            }
+            else
+            {
+                WarpHome();
+            }
         }
         dropCo = null;
     }
@@ -198,6 +209,8 @@ public class ToolItem : MonoBehaviour
         CancelDropTimer();
         isLockedOnTable2 = true;
         isBeingRejected = false;
+        table2Pos = slotPos;
+        table2Rot = slotRot;
 
         // Lock kinematic on Table 2 so it won't move when player gets near
         if (rb != null)
@@ -270,6 +283,29 @@ public class ToolItem : MonoBehaviour
 
     // ── Warp ──
 
+    private void WarpToTable2()
+    {
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        transform.position = table2Pos;
+        transform.rotation = table2Rot;
+        transform.localScale = homeScale; // Assuming original scale is desired
+
+        if (rb != null)
+        {
+            rb.position = table2Pos;
+            rb.rotation = table2Rot;
+            rb.isKinematic = true; // Lock kinematic resting on Table 2
+        }
+
+        Physics.SyncTransforms();
+    }
+
     private void WarpHome()
     {
         isLockedOnTable2 = false;
@@ -297,7 +333,7 @@ public class ToolItem : MonoBehaviour
 
     // Compatibility
     public void TeleportToTable1() => WarpHome();
-    public void SaveTable2Origin(Vector3 p, Quaternion r) { isLockedOnTable2 = true; }
+    public void SaveTable2Origin(Vector3 p, Quaternion r) { isLockedOnTable2 = true; table2Pos = p; table2Rot = r; }
     public void ResetOriginToTable1() { isLockedOnTable2 = false; }
 
     // ── Color helpers ──
@@ -331,6 +367,14 @@ public class ToolItem : MonoBehaviour
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cols[i]);
                 if (m.HasProperty("_Color"))     m.color = cols[i];
             }
+        }
+    }
+
+    public static void RestoreAllToolColors()
+    {
+        foreach (var tool in allToolsInScene)
+        {
+            if (tool != null) tool.RestoreColors();
         }
     }
 }

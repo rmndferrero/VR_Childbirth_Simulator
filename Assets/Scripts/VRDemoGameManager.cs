@@ -201,6 +201,9 @@ public class VRDemoGameManager : MonoBehaviour
 
         Debug.Log("[GameManager] Mayo Table Preparation Complete! Transitioning to Phase 2.");
 
+        // Restore normal colors to all tools
+        ToolItem.RestoreAllToolColors();
+
         // Notify checklist that Phase 1 is done — unlocks the "Set the Table" checkbox
         if (handChecklist != null)
             handChecklist.UnlockTask("Set the Table");
