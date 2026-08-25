@@ -13,12 +13,12 @@ public class BetadinePaintZone : MonoBehaviour
 
     void Start()
     {
-        // Make the shell visible for testing
+        // Hide the shell in gameplay so it blends with the mother model
         Renderer meshRenderer = GetComponent<Renderer>();
-       // if (meshRenderer != null)
-       // {
-         //meshRenderer.enabled = false;
-       // }
+        if (meshRenderer != null)
+        {
+            meshRenderer.enabled = false;
+        }
     }
 
     private void OnTriggerStay(Collider other)
