@@ -7,9 +7,10 @@ public class BetadinePaintZone : MonoBehaviour
     public GameObject paintDabPrefab;
 
     [Tooltip("How far the cotton must move (in meters) to drop the next dot of paint.")]
-    public float paintSpacing = 0.015f;
+    public float paintSpacing = 0.04f;
 
     private Vector3 lastPaintPosition;
+    private System.Collections.Generic.List<Vector3> placedDabs = new System.Collections.Generic.List<Vector3>();
 
     void Start()
     {
@@ -32,11 +33,21 @@ public class BetadinePaintZone : MonoBehaviour
             {
                 Vector3 currentPos = other.transform.position;
 
-                // Drop paint if it's the very first touch, OR if it moved far enough
-                if (lastPaintPosition == Vector3.zero || Vector3.Distance(currentPos, lastPaintPosition) > paintSpacing)
+                bool isTooClose = false;
+                foreach (Vector3 pos in placedDabs)
+                {
+                    if (Vector3.Distance(currentPos, pos) < paintSpacing)
+                    {
+                        isTooClose = true;
+                        break;
+                    }
+                }
+
+                if (!isTooClose)
                 {
                     DropPaintDab(currentPos);
                     lastPaintPosition = currentPos;
+                    placedDabs.Add(currentPos);
                 }
             }
         }

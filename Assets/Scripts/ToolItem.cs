@@ -13,8 +13,9 @@ public class ToolItem : MonoBehaviour
     private XRGrabInteractable grab;
     private Rigidbody rb;
 
-    // Visual feedback
+    // Visual feedback — cached material instances (created once, reused everywhere)
     private Renderer[] allRenderers;
+    private Dictionary<Renderer, Material[]> cachedMaterials = new Dictionary<Renderer, Material[]>();
     private Dictionary<Renderer, Color[]> savedColors = new Dictionary<Renderer, Color[]>();
 
     // Table 1 home position + scale
@@ -48,14 +49,21 @@ public class ToolItem : MonoBehaviour
             ?? GetComponentInParent<Rigidbody>()
             ?? GetComponentInChildren<Rigidbody>();
 
+        // Cache renderers and create material instances ONCE
         allRenderers = GetComponentsInChildren<Renderer>();
         foreach (var r in allRenderers)
         {
-            if (r == null || r.materials == null) continue;
-            var cols = new Color[r.materials.Length];
-            for (int i = 0; i < r.materials.Length; i++)
+            if (r == null) continue;
+
+            // Access .materials ONCE to create instances, then cache them
+            Material[] mats = r.materials;
+            cachedMaterials[r] = mats;
+
+            // Save original colors from the freshly-created instances
+            var cols = new Color[mats.Length];
+            for (int i = 0; i < mats.Length; i++)
             {
-                var m = r.materials[i];
+                var m = mats[i];
                 if (m == null) continue;
                 if (m.HasProperty("_BaseColor"))      cols[i] = m.GetColor("_BaseColor");
                 else if (m.HasProperty("_Color"))      cols[i] = m.color;
@@ -207,6 +215,14 @@ public class ToolItem : MonoBehaviour
     public void MarkCorrect(Vector3 slotPos, Quaternion slotRot)
     {
         CancelDropTimer();
+
+        // Stop any running reject coroutine so it can't re-tint or warp after this
+        if (rejectCo != null)
+        {
+            StopCoroutine(rejectCo);
+            rejectCo = null;
+        }
+
         isLockedOnTable2 = true;
         isBeingRejected = false;
         table2Pos = slotPos;
@@ -219,6 +235,10 @@ public class ToolItem : MonoBehaviour
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
+
+        // Re-enable grab in case a reject coroutine disabled it
+        if (grab != null)
+            grab.enabled = true;
 
         Tint(new Color(0.3f, 1f, 0.3f));
     }
@@ -244,11 +264,7 @@ public class ToolItem : MonoBehaviour
         // 2. Wait so player sees red feedback
         yield return new WaitForSeconds(redDuration);
 
-        // 3. Disable grab interactable so socket CANNOT re-select after exit
-        if (grab != null)
-            grab.enabled = false;
-
-        // 4. Force exit from all interactors (socket + any hand controllers)
+        // 3. Force exit from all interactors FIRST (so hover meshes clean up properly)
         if (grab != null)
         {
             var mgr = (socket != null) ? socket.interactionManager : grab.interactionManager;
@@ -257,8 +273,16 @@ public class ToolItem : MonoBehaviour
                 var holders = new List<IXRSelectInteractor>(grab.interactorsSelecting);
                 foreach (var h in holders)
                     mgr.SelectExit(h, grab);
+                    
+                var hoverers = new List<IXRHoverInteractor>(grab.interactorsHovering);
+                foreach (var h in hoverers)
+                    mgr.HoverExit(h, grab);
             }
         }
+
+        // 4. Disable grab interactable so socket CANNOT re-select after exit
+        if (grab != null)
+            grab.enabled = false;
 
         // 5. Wait for XRI cleanup
         yield return null;
@@ -343,8 +367,9 @@ public class ToolItem : MonoBehaviour
         if (allRenderers == null) return;
         foreach (var r in allRenderers)
         {
-            if (r == null || r.materials == null) continue;
-            foreach (var m in r.materials)
+            if (r == null) continue;
+            if (!cachedMaterials.TryGetValue(r, out var mats)) continue;
+            foreach (var m in mats)
             {
                 if (m == null) continue;
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
@@ -358,23 +383,38 @@ public class ToolItem : MonoBehaviour
         if (allRenderers == null) return;
         foreach (var r in allRenderers)
         {
-            if (r == null || r.materials == null) continue;
+            if (r == null) continue;
+            if (!cachedMaterials.TryGetValue(r, out var mats)) continue;
             if (!savedColors.TryGetValue(r, out var cols)) continue;
-            for (int i = 0; i < r.materials.Length && i < cols.Length; i++)
+
+            for (int i = 0; i < mats.Length && i < cols.Length; i++)
             {
-                var m = r.materials[i];
+                var m = mats[i];
                 if (m == null) continue;
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cols[i]);
                 if (m.HasProperty("_Color"))     m.color = cols[i];
+                if (m.HasProperty("_EmissionColor")) m.SetColor("_EmissionColor", Color.black);
             }
         }
+        Debug.Log($"[ToolItem] RestoreColors completed for {gameObject.name}");
     }
 
     public static void RestoreAllToolColors()
     {
+        Debug.Log($"[ToolItem] RestoreAllToolColors called. Tools in scene: {allToolsInScene.Count}");
         foreach (var tool in allToolsInScene)
         {
-            if (tool != null) tool.RestoreColors();
+            if (tool != null)
+            {
+                // Stop any lingering reject coroutines that could re-tint after we restore
+                if (tool.rejectCo != null)
+                {
+                    tool.StopCoroutine(tool.rejectCo);
+                    tool.rejectCo = null;
+                    tool.isBeingRejected = false;
+                }
+                tool.RestoreColors();
+            }
         }
     }
 }

@@ -62,10 +62,10 @@ public class PitcherPour : MonoBehaviour
     {
         // Draw an invisible line straight down from the spout to mimic gravity
         Ray ray = new Ray(spoutOrigin.position, Vector3.down);
-        RaycastHit hit;
-
-        // Cast the ray. Ensure "Queries Hit Triggers" is enabled in Physics Settings!
-        if (Physics.Raycast(ray, out hit, pourDistance))
+        // Cast the ray and get all hits (so the invisible Betadine Shell doesn't block it!)
+        RaycastHit[] hits = Physics.RaycastAll(ray, pourDistance);
+        
+        foreach (RaycastHit hit in hits)
         {
             // Check if the object we hit has the CleaningZone script attached
             CleaningZone zone = hit.collider.GetComponent<CleaningZone>();
@@ -74,6 +74,7 @@ public class PitcherPour : MonoBehaviour
             {
                 // Wash away the blood!
                 zone.WashWithWater();
+                break; // Optional: stop after hitting the first valid zone
             }
         }
     }
