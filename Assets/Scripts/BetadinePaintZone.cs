@@ -12,70 +12,114 @@ public class BetadinePaintZone : MonoBehaviour
     private Vector3 lastPaintPosition;
     private System.Collections.Generic.List<Vector3> placedDabs = new System.Collections.Generic.List<Vector3>();
 
-    void Start()
+    private Collider myCollider;
+    private CottonState[] allCottons;
+
+    private void Start()
     {
-        // Hide the shell in gameplay so it blends with the mother model
-        Renderer meshRenderer = GetComponent<Renderer>();
-        if (meshRenderer != null)
-        {
-            meshRenderer.enabled = false;
-        }
+        myCollider = GetComponent<Collider>();
+        paintSpacing = 0.012f; // Force a very small spacing so the stroke is completely solid and smooth
     }
 
-    private void OnTriggerStay(Collider other)
+    private void Update()
     {
-        if (other.CompareTag("Cotton"))
+        if (Time.frameCount % 30 == 0 || allCottons == null)
         {
-            CottonState cotton = other.GetComponent<CottonState>();
+            allCottons = FindObjectsOfType<CottonState>();
+        }
 
-            // ONLY paint if the cotton is soaked AND has not been used yet
-            if (cotton != null && cotton.isSoaked && !cotton.isUsed)
+        foreach (CottonState cotton in allCottons)
+        {
+            if (cotton == null) continue;
+
+            if (cotton.isSoaked)
             {
-                Vector3 currentPos = other.transform.position;
-
-                bool isTooClose = false;
-                foreach (Vector3 pos in placedDabs)
+                Collider[] hits = Physics.OverlapSphere(cotton.transform.position, 0.04f);
+                bool isTouching = false;
+                foreach (Collider hit in hits)
                 {
-                    if (Vector3.Distance(currentPos, pos) < paintSpacing)
+                    if (hit == myCollider)
                     {
-                        isTooClose = true;
+                        isTouching = true;
                         break;
                     }
                 }
 
-                if (!isTooClose)
+                if (isTouching)
                 {
-                    DropPaintDab(currentPos);
-                    lastPaintPosition = currentPos;
-                    placedDabs.Add(currentPos);
+                    Vector3 center = transform.position; 
+                    Vector3 dirToCenter = (center - cotton.transform.position).normalized;
+                    
+                    Ray ray = new Ray(cotton.transform.position - dirToCenter * 0.05f, dirToCenter);
+                    
+                    if (myCollider.Raycast(ray, out RaycastHit rayHit, 0.2f))
+                    {
+                        HandleTouch(cotton.gameObject, rayHit.point, rayHit.normal);
+                    }
+                    else
+                    {
+                        HandleTouch(cotton.gameObject, cotton.transform.position, dirToCenter * -1f);
+                    }
+                }
+                else
+                {
+                    HandleTouchExit(cotton.gameObject);
                 }
             }
         }
     }
 
-    private void OnTriggerExit(Collider other)
+    private void HandleTouch(GameObject obj, Vector3 pos, Vector3 normal)
     {
-        if (other.CompareTag("Cotton"))
+        CottonState cotton = obj.GetComponent<CottonState>();
+        if (cotton != null && cotton.isSoaked)
         {
-            CottonState cotton = other.GetComponent<CottonState>();
-
-            // The moment the soaked cotton is lifted off the skin, it becomes dirty/used.
-            // It can no longer paint, enforcing the "One Swipe Per Cotton" rule.
-            if (cotton != null && cotton.isSoaked && lastPaintPosition != Vector3.zero)
+            bool isTooClose = false;
+            foreach (Vector3 p in placedDabs)
             {
-                cotton.isUsed = true;
-                lastPaintPosition = Vector3.zero; // Reset for the NEXT fresh cotton ball
-                Debug.Log("[BetadinePaintZone] Stroke finished. Cotton is now dirty and cannot be used again.");
+                if (Vector3.Distance(pos, p) < paintSpacing)
+                {
+                    isTooClose = true;
+                    break;
+                }
+            }
+
+            if (!isTooClose)
+            {
+                DropPaintDab(pos, normal);
+                lastPaintPosition = pos;
+                placedDabs.Add(pos);
             }
         }
     }
 
-    private void DropPaintDab(Vector3 position)
+    private void HandleTouchExit(GameObject obj)
+    {
+        lastPaintPosition = Vector3.zero;
+    }
+
+    private void DropPaintDab(Vector3 position, Vector3 normal)
     {
         if (paintDabPrefab == null) return;
 
-        GameObject newDecal = Instantiate(paintDabPrefab, position, Quaternion.identity);
-        newDecal.transform.LookAt(transform.position);
+        // PULL BACK: Move the projector slightly AWAY from the skin. 
+        // This prevents the decal from clipping or getting chopped off on curved surfaces.
+        Vector3 spawnPos = position + normal * 0.1f;
+
+        Quaternion dabRotation = Quaternion.LookRotation(-normal);
+        GameObject newDecal = Instantiate(paintDabPrefab, spawnPos, dabRotation);
         newDecal.transform.SetParent(transform);
+
+        // Increase the size slightly so it feels like a nice thick brush stroke
+        UnityEngine.Rendering.Universal.DecalProjector proj = newDecal.GetComponent<UnityEngine.Rendering.Universal.DecalProjector>();
+        if (proj != null)
+        {
+            proj.size = new Vector3(0.06f, 0.06f, 0.2f);
+        }
+
+        if (newDecal.GetComponent<WashableDecal>() == null)
+        {
+            newDecal.AddComponent<WashableDecal>();
+        }
     }
 }

@@ -62,19 +62,23 @@ public class PitcherPour : MonoBehaviour
     {
         // Draw an invisible line straight down from the spout to mimic gravity
         Ray ray = new Ray(spoutOrigin.position, Vector3.down);
-        // Cast the ray and get all hits (so the invisible Betadine Shell doesn't block it!)
+        // Cast the ray and get all hits (so we can wash both blood AND betadine paint)
         RaycastHit[] hits = Physics.RaycastAll(ray, pourDistance);
         
         foreach (RaycastHit hit in hits)
         {
-            // Check if the object we hit has the CleaningZone script attached
+            // Check if the object we hit has the CleaningZone script (blood)
             CleaningZone zone = hit.collider.GetComponent<CleaningZone>();
-            
             if (zone != null)
             {
-                // Wash away the blood!
                 zone.WashWithWater();
-                break; // Optional: stop after hitting the first valid zone
+            }
+
+            // Check if the object we hit has the WashableDecal script (betadine paint)
+            WashableDecal decal = hit.collider.GetComponent<WashableDecal>();
+            if (decal != null)
+            {
+                decal.WashWithWater();
             }
         }
     }
