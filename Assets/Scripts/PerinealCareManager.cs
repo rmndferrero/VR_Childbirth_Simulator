@@ -22,6 +22,7 @@ public class PerinealCareManager : MonoBehaviour
     [Header("UI References")]
     public FloatingPokeDialogueUI floatingDialogueUI;
     public CleaningProgressUI cleaningProgressUI;
+    public StrokeGuideUI strokeGuideUI;
 
     [Header("Scene Component References")]
     public BetadinePaintZone paintZone;
@@ -61,6 +62,10 @@ public class PerinealCareManager : MonoBehaviour
                 {
                     cleaningProgressUI.Hide();
                 }
+                if (strokeGuideUI != null)
+                {
+                    strokeGuideUI.Hide();
+                }
                 break;
 
             case PerinealCareState.STATE_1_WATER_WASH:
@@ -68,9 +73,13 @@ public class PerinealCareManager : MonoBehaviour
                 {
                     floatingDialogueUI.Hide();
                 }
+                if (strokeGuideUI != null)
+                {
+                    strokeGuideUI.Hide();
+                }
                 if (cleaningProgressUI != null)
                 {
-                    cleaningProgressUI.ResetProgress("Step 1: Preliminary Water Wash (Center -> Left -> Right)");
+                    cleaningProgressUI.ResetProgress("Step 1: Preliminary Water Wash");
                     cleaningProgressUI.Show();
                 }
                 break;
@@ -80,17 +89,35 @@ public class PerinealCareManager : MonoBehaviour
                 {
                     cleaningProgressUI.Hide();
                 }
+                if (floatingDialogueUI != null)
+                {
+                    floatingDialogueUI.Hide();
+                }
                 if (strokeTrackingManager != null)
                 {
                     strokeTrackingManager.ResetForPhase(AntisepticType.Iodine_7_5_Scrub);
+                }
+                if (strokeGuideUI != null)
+                {
+                    if (strokeGuideUI.phaseTitleText != null)
+                        strokeGuideUI.phaseTitleText.text = "Step 2: 7.5% Povidone-Iodine Scrub (9-Ball Technique)";
+                    strokeGuideUI.Show();
                 }
                 Debug.Log("[PerinealCareManager] 7.5% Iodine Scrub Phase Started. Use Pickup Forceps -> 7.5% Jar -> Handling Forceps.");
                 break;
 
             case PerinealCareState.STATE_3_WATER_RINSE:
+                if (strokeGuideUI != null)
+                {
+                    strokeGuideUI.Hide();
+                }
+                if (floatingDialogueUI != null)
+                {
+                    floatingDialogueUI.Hide();
+                }
                 if (cleaningProgressUI != null)
                 {
-                    cleaningProgressUI.ResetProgress("Step 3: Intermediate Water Rinse (Center -> Left -> Right)");
+                    cleaningProgressUI.ResetProgress("Step 3: Intermediate Water Rinse");
                     cleaningProgressUI.Show();
                 }
                 Debug.Log("[PerinealCareManager] Intermediate Water Rinse Started. Wash away the Light Green paint.");
@@ -101,9 +128,19 @@ public class PerinealCareManager : MonoBehaviour
                 {
                     cleaningProgressUI.Hide();
                 }
+                if (floatingDialogueUI != null)
+                {
+                    floatingDialogueUI.Hide();
+                }
                 if (strokeTrackingManager != null)
                 {
                     strokeTrackingManager.ResetForPhase(AntisepticType.Iodine_10_Paint);
+                }
+                if (strokeGuideUI != null)
+                {
+                    if (strokeGuideUI.phaseTitleText != null)
+                        strokeGuideUI.phaseTitleText.text = "Step 4: 10% Povidone-Iodine Antiseptic Paint (Surgical Prep)";
+                    strokeGuideUI.Show();
                 }
                 Debug.Log("[PerinealCareManager] 10% Iodine Paint Phase Started. Use Pickup Forceps -> 10% Jar -> Handling Forceps.");
                 break;
@@ -112,6 +149,10 @@ public class PerinealCareManager : MonoBehaviour
                 if (cleaningProgressUI != null)
                 {
                     cleaningProgressUI.Hide();
+                }
+                if (strokeGuideUI != null)
+                {
+                    strokeGuideUI.Hide();
                 }
                 if (floatingDialogueUI != null)
                 {

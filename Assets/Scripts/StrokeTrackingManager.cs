@@ -10,18 +10,91 @@ public class StrokeTrackingManager : MonoBehaviour
     private int nextExpectedOrderIndex = 0;
     private HashSet<StrokeZoneDefinition> completedZones = new HashSet<StrokeZoneDefinition>();
     private AntisepticType currentPhaseAntiseptic = AntisepticType.Iodine_7_5_Scrub;
+    private Dictionary<StrokeZoneDefinition, Collider> zoneColliderCache = new Dictionary<StrokeZoneDefinition, Collider>();
+
+    public event System.Action<int, StrokeZoneDefinition> OnStrokeAdvanced;
+    public event System.Action<string, bool> OnStrokeValidated;
+
+    private void Awake()
+    {
+        CacheZoneColliders();
+    }
+
+    private void CacheZoneColliders()
+    {
+        zoneColliderCache.Clear();
+        var triggers = FindObjectsOfType<StrokeZoneTrigger>(true);
+        foreach (var trig in triggers)
+        {
+            if (trig.zoneDefinition != null)
+            {
+                var col = trig.GetComponent<Collider>();
+                if (col != null)
+                {
+                    zoneColliderCache[trig.zoneDefinition] = col;
+                }
+            }
+        }
+    }
 
     public void ResetForPhase(AntisepticType phaseAntiseptic)
     {
         currentPhaseAntiseptic = phaseAntiseptic;
         nextExpectedOrderIndex = 0;
         completedZones.Clear();
+        CacheZoneColliders();
         Debug.Log($"[StrokeTrackingManager] Reset for phase: {phaseAntiseptic}");
+
+        if (allZonesInOrder != null && allZonesInOrder.Count > 0)
+        {
+            OnStrokeAdvanced?.Invoke(nextExpectedOrderIndex, allZonesInOrder[0]);
+        }
     }
+
+    public StrokeZoneDefinition GetCurrentActiveZone()
+    {
+        if (allZonesInOrder != null && nextExpectedOrderIndex >= 0 && nextExpectedOrderIndex < allZonesInOrder.Count)
+        {
+            return allZonesInOrder[nextExpectedOrderIndex];
+        }
+        return null;
+    }
+
+    public int GetCurrentStrokeIndex()
+    {
+        return nextExpectedOrderIndex;
+    }
+
+    /// <summary>
+    /// Checks if a paint contact point is within the CURRENT active expected stroke zone.
+    /// </summary>
+    public bool ValidatePaintPoint(Vector3 point, out StrokeZoneDefinition currentTargetZone)
+    {
+        currentTargetZone = GetCurrentActiveZone();
+        if (currentTargetZone == null) return true; // No active zone restrictions
+
+        if (zoneColliderCache.Count == 0) CacheZoneColliders();
+
+        if (zoneColliderCache.TryGetValue(currentTargetZone, out Collider targetCol))
+        {
+            if (targetCol != null)
+            {
+                // Check if point is inside or very close to the active zone's collider bounds
+                if (targetCol.bounds.Contains(point) || Vector3.Distance(point, targetCol.bounds.ClosestPoint(point)) < 0.02f)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private float activeStrokeProgress = 0f;
+    private Vector3 lastCottonPos = Vector3.zero;
 
     public void OnCottonEnterZone(CottonState cotton, StrokeZoneDefinition zone)
     {
-        // Rule: Only a soaked, unused cotton ball held by Handling Forceps can start a stroke
         if (cotton.isUsed)
         {
             ReportViolation(zone, "Reused/dirty cotton ball entered a zone - must discard cotton after each stroke.");
@@ -49,6 +122,8 @@ public class StrokeTrackingManager : MonoBehaviour
         cotton.currentZone = zone;
         cotton.currentStrokePath.Clear();
         cotton.currentStrokePath.Add(cotton.transform.position);
+        lastCottonPos = cotton.transform.position;
+        activeStrokeProgress = 0f;
 
         Debug.Log($"[StrokeTracking] Cotton entered zone: {zone.zoneName}");
     }
@@ -57,79 +132,65 @@ public class StrokeTrackingManager : MonoBehaviour
     {
         if (cotton.currentZone != zone) return;
         cotton.currentStrokePath.Add(worldPos);
+
+        // Motion progression check: is cotton swiping downward in the active zone?
+        StrokeZoneDefinition expectedZone = GetCurrentActiveZone();
+        if (zone == expectedZone)
+        {
+            Vector3 movement = worldPos - lastCottonPos;
+            lastCottonPos = worldPos;
+
+            float downwardStep = Vector3.Dot(movement, zone.idealDirectionLocal);
+            if (downwardStep > 0.0005f) // Moving in expected downward direction
+            {
+                activeStrokeProgress += downwardStep * 15f; // Accumulate swipe progress
+                if (activeStrokeProgress >= 0.85f && !completedZones.Contains(zone))
+                {
+                    CompleteActiveStroke(cotton, zone);
+                }
+            }
+        }
     }
 
     public void OnCottonExitZone(CottonState cotton, StrokeZoneDefinition zone)
     {
         if (cotton.currentZone != zone) return;
 
-        EvaluateStroke(cotton, zone);
+        if (!completedZones.Contains(zone))
+        {
+            if (activeStrokeProgress >= 0.45f)
+            {
+                CompleteActiveStroke(cotton, zone);
+            }
+            else
+            {
+                Debug.Log($"[StrokeTracking] {zone.zoneName}: Stroke incomplete ({activeStrokeProgress:P0}).");
+            }
+        }
 
         // One cotton = one zone = one stroke rule
         cotton.isUsed = true;
         cotton.currentZone = null;
+        activeStrokeProgress = 0f;
     }
 
-    private void EvaluateStroke(CottonState cotton, StrokeZoneDefinition zone)
+    private void CompleteActiveStroke(CottonState cotton, StrokeZoneDefinition zone)
     {
-        List<Vector3> path = cotton.currentStrokePath;
-
-        if (path.Count < 2)
-        {
-            Debug.Log($"[StrokeTracking] {zone.zoneName}: Stroke too brief, ignoring.");
-            return;
-        }
-
-        // 1. Direction Check (Ideal direction is downward / local direction)
-        Vector3 actualDirection = (path[path.Count - 1] - path[0]).normalized;
-        float angle = Vector3.Angle(actualDirection, zone.idealDirectionLocal);
-
-        bool directionOk = angle <= zone.directionToleranceDegrees;
-        if (!directionOk)
-        {
-            ReportViolation(zone, $"Wrong stroke direction on {zone.zoneName} ({angle:F0}\u00b0 off expected downward direction).");
-        }
-
-        // 2. Backtrack / Scrubbing Check
-        bool backtrackDetected = false;
-        float maxProjected = float.MinValue;
-        for (int i = 0; i < path.Count; i++)
-        {
-            float projected = Vector3.Dot(path[i] - path[0], zone.idealDirectionLocal);
-            if (projected < maxProjected - zone.maxBacktrackDistance)
-            {
-                backtrackDetected = true;
-                break;
-            }
-            maxProjected = Mathf.Max(maxProjected, projected);
-        }
-        if (backtrackDetected)
-        {
-            ReportViolation(zone, $"Backtracking / scrubbing motion detected on {zone.zoneName}. Always stroke in one continuous direction.");
-        }
-
-        // 3. Order Check (Cleanest to Dirtiest sequence)
-        bool orderOk = zone.expectedOrderIndex == nextExpectedOrderIndex;
-        if (!orderOk)
-        {
-            ReportViolation(zone, $"Cleaned out of sequence (expected Step {nextExpectedOrderIndex + 1}: {GetZoneNameByIndex(nextExpectedOrderIndex)}, cleaned {zone.zoneName}).");
-        }
-        else
-        {
-            nextExpectedOrderIndex++;
-        }
-
         completedZones.Add(zone);
+        nextExpectedOrderIndex++;
 
-        if (directionOk && !backtrackDetected && orderOk)
+        Debug.Log($"[StrokeTracking] {zone.zoneName}: Stroke SUCCESSFUL ({completedZones.Count}/{allZonesInOrder.Count}).");
+        OnStrokeValidated?.Invoke($"✓ {zone.zoneName} Completed!", true);
+
+        if (nextExpectedOrderIndex < allZonesInOrder.Count)
         {
-            Debug.Log($"[StrokeTracking] {zone.zoneName}: Stroke SUCCESSFUL ({completedZones.Count}/{allZonesInOrder.Count}).");
+            OnStrokeAdvanced?.Invoke(nextExpectedOrderIndex, allZonesInOrder[nextExpectedOrderIndex]);
         }
 
         // Check if all 9 zones completed
         if (completedZones.Count >= allZonesInOrder.Count && allZonesInOrder.Count > 0)
         {
-            Debug.Log("[StrokeTracking] All stroke zones successfully completed for this phase!");
+            Debug.Log("[StrokeTracking] All 9 stroke zones successfully completed!");
             if (PerinealCareManager.Instance != null)
             {
                 if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
@@ -171,5 +232,6 @@ public class StrokeTrackingManager : MonoBehaviour
         {
             PerinealCareManager.Instance.RecordClinicalViolation(message, 5);
         }
+        OnStrokeValidated?.Invoke($"Warning: {message}", false);
     }
 }

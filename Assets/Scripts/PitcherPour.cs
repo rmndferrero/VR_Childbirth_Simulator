@@ -13,7 +13,7 @@ public class PitcherPour : MonoBehaviour
     [Tooltip("How far down the water reaches to clean.")]
     public float pourDistance = 1.5f;
     [Tooltip("Radius of the water stream (matches visual particle stream).")]
-    public float waterStreamRadius = 0.08f;
+    public float waterStreamRadius = 0.035f;
 
     private ParticleSystem.EmissionModule emissionModule;
     private bool isPouring = false;

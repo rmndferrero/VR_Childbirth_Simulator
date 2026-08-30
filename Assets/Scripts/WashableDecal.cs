@@ -20,9 +20,12 @@ public class WashableDecal : MonoBehaviour
         projector = GetComponent<DecalProjector>();
 
         // Add a generous sphere trigger collider so water stream easily detects and cleans this dab from any angle
-        SphereCollider col = gameObject.AddComponent<SphereCollider>();
-        col.isTrigger = true;
-        col.radius = 0.045f;
+        if (GetComponent<SphereCollider>() == null && GetComponent<Collider>() == null)
+        {
+            SphereCollider col = gameObject.AddComponent<SphereCollider>();
+            col.isTrigger = true;
+            col.radius = 0.045f;
+        }
     }
 
     /// <summary>
@@ -49,16 +52,24 @@ public class WashableDecal : MonoBehaviour
     /// </summary>
     public void FadeAway()
     {
-        StartCoroutine(AutoFadeRoutine());
+        StartCoroutine(AutoFadeRoutine(1.2f, fadeSpeed));
     }
 
-    private System.Collections.IEnumerator AutoFadeRoutine()
+    /// <summary>
+    /// Split-second flash fade for mistake touches (vanishes in ~0.4s).
+    /// </summary>
+    public void FastFade(float delay = 0.15f, float speed = 4.5f)
     {
-        yield return new WaitForSeconds(1.5f); // Brief pause so player sees the mistake
+        StartCoroutine(AutoFadeRoutine(delay, speed));
+    }
+
+    private System.Collections.IEnumerator AutoFadeRoutine(float delay, float speed)
+    {
+        yield return new WaitForSeconds(delay);
 
         while (projector != null && projector.fadeFactor > 0f)
         {
-            projector.fadeFactor -= fadeSpeed * Time.deltaTime;
+            projector.fadeFactor -= speed * Time.deltaTime;
             yield return null;
         }
 

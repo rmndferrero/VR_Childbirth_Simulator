@@ -9,20 +9,25 @@ public class BetadinePaintZone : MonoBehaviour
     [Tooltip("Prefab for 10% Povidone-Iodine Paint (Dark Green, Persistent).")]
     public GameObject prefab_10_DarkGreen;
 
+    [Tooltip("Prefab for Mistake Stroke (Red, Auto-Fading).")]
+    public GameObject prefab_Mistake_Red;
+
     [Header("Brush Settings")]
     [Tooltip("How far the cotton must move (in meters) to drop the next dot of paint.")]
-    public float paintSpacing = 0.012f;
+    public float paintSpacing = 0.007f;
 
     private Vector3 lastPaintPosition;
     private System.Collections.Generic.List<Vector3> placedDabs = new System.Collections.Generic.List<Vector3>();
 
     private Collider myCollider;
     private CottonState[] allCottons;
+    private StrokeTrackingManager strokeTrackingManager;
 
     private void Start()
     {
         myCollider = GetComponent<Collider>();
-        paintSpacing = 0.012f;
+        paintSpacing = 0.007f;
+        strokeTrackingManager = FindObjectOfType<StrokeTrackingManager>();
     }
 
     private void Update()
@@ -88,24 +93,42 @@ public class BetadinePaintZone : MonoBehaviour
         }
 
         // Phase Alignment Check
+        bool isMistake = false;
+
         if (PerinealCareManager.Instance != null)
         {
             var phase = PerinealCareManager.Instance.currentState;
-            if (phase == PerinealCareState.STATE_2_IODINE_7_5 && cotton.antisepticType != AntisepticType.Iodine_7_5_Scrub)
+
+            if (phase == PerinealCareState.STATE_2_IODINE_7_5)
             {
-                if (Time.frameCount % 60 == 0)
+                if (cotton.antisepticType != AntisepticType.Iodine_7_5_Scrub)
                 {
-                    PerinealCareManager.Instance.RecordClinicalViolation("Wrong solution: Use 7.5% Iodine Scrub during Phase 2.", 5);
+                    if (Time.frameCount % 60 == 0)
+                    {
+                        PerinealCareManager.Instance.RecordClinicalViolation("Wrong solution: Use 7.5% Iodine Scrub during Phase 2.", 5);
+                    }
+                    isMistake = true;
                 }
-                return;
+                else if (strokeTrackingManager != null)
+                {
+                    // Check if contact is in the active stroke zone
+                    bool isCorrectZone = strokeTrackingManager.ValidatePaintPoint(pos, out StrokeZoneDefinition expectedZone);
+                    if (!isCorrectZone)
+                    {
+                        isMistake = true;
+                    }
+                }
             }
-            else if (phase == PerinealCareState.STATE_4_IODINE_10 && cotton.antisepticType != AntisepticType.Iodine_10_Paint)
+            else if (phase == PerinealCareState.STATE_4_IODINE_10)
             {
-                if (Time.frameCount % 60 == 0)
+                if (cotton.antisepticType != AntisepticType.Iodine_10_Paint)
                 {
-                    PerinealCareManager.Instance.RecordClinicalViolation("Wrong solution: Use 10% Iodine Paint during Phase 4.", 5);
+                    if (Time.frameCount % 60 == 0)
+                    {
+                        PerinealCareManager.Instance.RecordClinicalViolation("Wrong solution: Use 10% Iodine Paint during Phase 4.", 5);
+                    }
+                    isMistake = true;
                 }
-                return;
             }
         }
 
@@ -121,9 +144,9 @@ public class BetadinePaintZone : MonoBehaviour
 
         if (!isTooClose)
         {
-            DropPaintDab(pos, normal, cotton.antisepticType);
+            DropPaintDab(pos, normal, cotton.antisepticType, isMistake);
             lastPaintPosition = pos;
-            placedDabs.Add(pos);
+            if (!isMistake) placedDabs.Add(pos);
         }
     }
 
@@ -132,13 +155,27 @@ public class BetadinePaintZone : MonoBehaviour
         lastPaintPosition = Vector3.zero;
     }
 
-    private void DropPaintDab(Vector3 position, Vector3 normal, AntisepticType type)
+    private void DropPaintDab(Vector3 position, Vector3 normal, AntisepticType type, bool isMistake)
     {
-        GameObject prefabToSpawn = type == AntisepticType.Iodine_10_Paint ? prefab_10_DarkGreen : prefab_7_5_LightGreen;
+        GameObject prefabToSpawn;
+
+        if (isMistake)
+        {
+            prefabToSpawn = prefab_Mistake_Red != null ? prefab_Mistake_Red : prefab_7_5_LightGreen;
+        }
+        else if (type == AntisepticType.Iodine_10_Paint)
+        {
+            prefabToSpawn = prefab_10_DarkGreen;
+        }
+        else
+        {
+            prefabToSpawn = prefab_7_5_LightGreen;
+        }
+
         if (prefabToSpawn == null) return;
 
         // PULL BACK: Move the projector slightly AWAY from the skin.
-        Vector3 spawnPos = position + normal * 0.1f;
+        Vector3 spawnPos = position + normal * 0.06f;
         Quaternion dabRotation = Quaternion.LookRotation(-normal);
 
         GameObject newDecal = Instantiate(prefabToSpawn, spawnPos, dabRotation);
@@ -147,7 +184,15 @@ public class BetadinePaintZone : MonoBehaviour
         UnityEngine.Rendering.Universal.DecalProjector proj = newDecal.GetComponent<UnityEngine.Rendering.Universal.DecalProjector>();
         if (proj != null)
         {
-            proj.size = new Vector3(0.06f, 0.06f, 0.2f);
+            proj.size = new Vector3(0.022f, 0.022f, 0.15f);
+        }
+
+        // If mistake, auto-fade and dissolve after split second (0.35s)!
+        if (isMistake)
+        {
+            WashableDecal wd = newDecal.GetComponent<WashableDecal>();
+            if (wd == null) wd = newDecal.AddComponent<WashableDecal>();
+            wd.FastFade(0.12f, 5.0f);
         }
     }
 

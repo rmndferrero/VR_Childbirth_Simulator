@@ -30,11 +30,13 @@ public class CleaningProgressUI : MonoBehaviour
     private float displayedFill = 0f;
     private bool isComplete = false;
     private string baseTitle = "Water Wash Progress";
+    private float zoneSwitchCooldownTimer = 0f;
 
     private void Awake()
     {
         currentZoneProgress = 0f;
         displayedFill = 0f;
+        zoneSwitchCooldownTimer = 0f;
         if (continuousFillImage != null)
         {
             continuousFillImage.fillAmount = 0f;
@@ -44,6 +46,7 @@ public class CleaningProgressUI : MonoBehaviour
     private void OnEnable()
     {
         displayedFill = currentZoneProgress;
+        zoneSwitchCooldownTimer = 0f;
         if (continuousFillImage != null)
         {
             continuousFillImage.fillAmount = displayedFill;
@@ -52,6 +55,11 @@ public class CleaningProgressUI : MonoBehaviour
 
     private void Update()
     {
+        if (zoneSwitchCooldownTimer > 0f)
+        {
+            zoneSwitchCooldownTimer -= Time.deltaTime;
+        }
+
         // Smoothly animate the fill bar movement towards current zone progress
         displayedFill = Mathf.MoveTowards(displayedFill, currentZoneProgress, Time.deltaTime * 2.0f);
 
@@ -84,6 +92,7 @@ public class CleaningProgressUI : MonoBehaviour
         currentActiveZone = WashZone.Center;
         currentZoneProgress = 0f;
         displayedFill = 0f;
+        zoneSwitchCooldownTimer = 0f;
         isComplete = false;
 
         if (continuousFillImage != null) continuousFillImage.fillAmount = 0f;
@@ -92,7 +101,7 @@ public class CleaningProgressUI : MonoBehaviour
 
     public void ReportWaterPour(WashZone zone, float deltaTime)
     {
-        if (isComplete) return;
+        if (isComplete || zoneSwitchCooldownTimer > 0f) return;
 
         // Only increase progress if pouring on the current active zone
         if (zone == currentActiveZone)
@@ -120,6 +129,7 @@ public class CleaningProgressUI : MonoBehaviour
     private void AdvanceToNextZone()
     {
         currentZoneProgress = 1f;
+        zoneSwitchCooldownTimer = 0.7f; // Brief cooldown before next zone accepts water
 
         if (currentActiveZone == WashZone.Center)
         {
