@@ -1,29 +1,48 @@
 using UnityEngine;
 using System.Collections.Generic;
 
-// One instance of this lives in the scene (e.g. on an empty "StrokeTrackingManager" GameObject).
-// All StrokeZoneTrigger components reference it.
 public class StrokeTrackingManager : MonoBehaviour
 {
-    [Tooltip("All zone definitions, listed in the correct cleanest-to-dirtiest order. With 3 placeholder zones for now.")]
+    [Header("Sequence Configuration")]
+    [Tooltip("All 9 zone definitions listed in the clinical order.")]
     public List<StrokeZoneDefinition> allZonesInOrder;
 
     private int nextExpectedOrderIndex = 0;
     private HashSet<StrokeZoneDefinition> completedZones = new HashSet<StrokeZoneDefinition>();
+    private AntisepticType currentPhaseAntiseptic = AntisepticType.Iodine_7_5_Scrub;
+
+    public void ResetForPhase(AntisepticType phaseAntiseptic)
+    {
+        currentPhaseAntiseptic = phaseAntiseptic;
+        nextExpectedOrderIndex = 0;
+        completedZones.Clear();
+        Debug.Log($"[StrokeTrackingManager] Reset for phase: {phaseAntiseptic}");
+    }
 
     public void OnCottonEnterZone(CottonState cotton, StrokeZoneDefinition zone)
     {
-        // Rule: only a soaked, unused cotton ball can start a valid stroke -
-        // matches the same gate BetadinePaintZone uses for painting.
+        // Rule: Only a soaked, unused cotton ball held by Handling Forceps can start a stroke
         if (cotton.isUsed)
         {
-            ReportViolation(zone, "Reused/dirty cotton ball entered a zone - should have been discarded after its first stroke.");
+            ReportViolation(zone, "Reused/dirty cotton ball entered a zone - must discard cotton after each stroke.");
             return;
         }
 
         if (!cotton.isSoaked)
         {
-            ReportViolation(zone, "Dry cotton entered a zone - should be soaked in Betadine first.");
+            ReportViolation(zone, "Dry cotton entered a zone - cotton must be soaked in antiseptic first.");
+            return;
+        }
+
+        if (cotton.antisepticType != currentPhaseAntiseptic)
+        {
+            ReportViolation(zone, $"Wrong antiseptic solution for this phase (Expected {currentPhaseAntiseptic}, used {cotton.antisepticType}).");
+            return;
+        }
+
+        if (cotton.currentHolder != ForcepsRole.Handling)
+        {
+            ReportViolation(zone, "Only Handling Forceps may perform strokes on the patient!");
             return;
         }
 
@@ -36,9 +55,7 @@ public class StrokeTrackingManager : MonoBehaviour
 
     public void OnCottonStayInZone(CottonState cotton, StrokeZoneDefinition zone, Vector3 worldPos)
     {
-        // Ignore stray contact from a different zone's collider overlapping slightly
         if (cotton.currentZone != zone) return;
-
         cotton.currentStrokePath.Add(worldPos);
     }
 
@@ -48,9 +65,7 @@ public class StrokeTrackingManager : MonoBehaviour
 
         EvaluateStroke(cotton, zone);
 
-        // One cotton = one zone = one stroke. Mark it dirty the moment it leaves THIS zone,
-        // not just when it leaves the outer shell - this is the same isUsed flag
-        // BetadinePaintZone checks, so painting stops for this cotton too from here on.
+        // One cotton = one zone = one stroke rule
         cotton.isUsed = true;
         cotton.currentZone = null;
     }
@@ -61,19 +76,21 @@ public class StrokeTrackingManager : MonoBehaviour
 
         if (path.Count < 2)
         {
-            Debug.Log($"[StrokeTracking] {zone.zoneName}: stroke too brief to evaluate, ignoring.");
+            Debug.Log($"[StrokeTracking] {zone.zoneName}: Stroke too brief, ignoring.");
             return;
         }
 
+        // 1. Direction Check (Ideal direction is downward / local direction)
         Vector3 actualDirection = (path[path.Count - 1] - path[0]).normalized;
         float angle = Vector3.Angle(actualDirection, zone.idealDirectionLocal);
 
         bool directionOk = angle <= zone.directionToleranceDegrees;
         if (!directionOk)
         {
-            ReportViolation(zone, $"Wrong stroke direction ({angle:F0}\u00b0 off expected).");
+            ReportViolation(zone, $"Wrong stroke direction on {zone.zoneName} ({angle:F0}\u00b0 off expected downward direction).");
         }
 
+        // 2. Backtrack / Scrubbing Check
         bool backtrackDetected = false;
         float maxProjected = float.MinValue;
         for (int i = 0; i < path.Count; i++)
@@ -88,13 +105,14 @@ public class StrokeTrackingManager : MonoBehaviour
         }
         if (backtrackDetected)
         {
-            ReportViolation(zone, "Backtracking / scrubbing motion detected.");
+            ReportViolation(zone, $"Backtracking / scrubbing motion detected on {zone.zoneName}. Always stroke in one continuous direction.");
         }
 
+        // 3. Order Check (Cleanest to Dirtiest sequence)
         bool orderOk = zone.expectedOrderIndex == nextExpectedOrderIndex;
         if (!orderOk)
         {
-            ReportViolation(zone, $"Cleaned out of order (expected step {nextExpectedOrderIndex + 1}, this was step {zone.expectedOrderIndex + 1}).");
+            ReportViolation(zone, $"Cleaned out of sequence (expected Step {nextExpectedOrderIndex + 1}: {GetZoneNameByIndex(nextExpectedOrderIndex)}, cleaned {zone.zoneName}).");
         }
         else
         {
@@ -105,17 +123,42 @@ public class StrokeTrackingManager : MonoBehaviour
 
         if (directionOk && !backtrackDetected && orderOk)
         {
-            Debug.Log($"[StrokeTracking] {zone.zoneName}: stroke OK.");
+            Debug.Log($"[StrokeTracking] {zone.zoneName}: Stroke SUCCESSFUL ({completedZones.Count}/{allZonesInOrder.Count}).");
+        }
+
+        // Check if all 9 zones completed
+        if (completedZones.Count >= allZonesInOrder.Count && allZonesInOrder.Count > 0)
+        {
+            Debug.Log("[StrokeTracking] All stroke zones successfully completed for this phase!");
+            if (PerinealCareManager.Instance != null)
+            {
+                if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
+                {
+                    PerinealCareManager.Instance.On7_5ScrubCompleted();
+                }
+                else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
+                {
+                    PerinealCareManager.Instance.On10PaintCompleted();
+                }
+            }
         }
     }
 
-    // Call this once the procedure is considered finished (e.g. player presses a "done" button)
+    private string GetZoneNameByIndex(int index)
+    {
+        if (allZonesInOrder != null && index >= 0 && index < allZonesInOrder.Count && allZonesInOrder[index] != null)
+        {
+            return allZonesInOrder[index].zoneName;
+        }
+        return $"Zone {index + 1}";
+    }
+
     public List<string> GetMissedZones()
     {
         List<string> missed = new List<string>();
         foreach (StrokeZoneDefinition zone in allZonesInOrder)
         {
-            if (!completedZones.Contains(zone))
+            if (zone != null && !completedZones.Contains(zone))
                 missed.Add(zone.zoneName);
         }
         return missed;
@@ -123,8 +166,10 @@ public class StrokeTrackingManager : MonoBehaviour
 
     private void ReportViolation(StrokeZoneDefinition zone, string message)
     {
-        Debug.LogWarning($"[StrokeTracking] {zone.zoneName}: {message}");
-        // TODO once this is validated: route this into GlobalHazardMatrix instead of just logging,
-        // matching how Mayo Table / Assessment phase penalties are recorded.
+        Debug.LogWarning($"[StrokeTracking Violation] {zone?.zoneName}: {message}");
+        if (PerinealCareManager.Instance != null)
+        {
+            PerinealCareManager.Instance.RecordClinicalViolation(message, 5);
+        }
     }
 }

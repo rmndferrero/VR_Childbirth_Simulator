@@ -36,6 +36,7 @@ public class ForcepsController : MonoBehaviour
 
     // Controlled by the CottonJarZone script
     [HideInInspector] public bool isInJarZone = false;
+    [HideInInspector] public CottonJarZone activeJarZone = null;
     private bool isSpawning = false;
 
     private bool isHeldByLeftHand = false;
@@ -169,8 +170,17 @@ public class ForcepsController : MonoBehaviour
         isSpawning = true;
 
         // Spawn the cotton exactly inside the socket
-        Instantiate(cottonPrefab, cottonSocket.transform.position, cottonSocket.transform.rotation);
-        Debug.Log("[Forceps] New cotton spawned from the jar.");
+        GameObject newCotton = Instantiate(cottonPrefab, cottonSocket.transform.position, cottonSocket.transform.rotation);
+        CottonState cottonState = newCotton.GetComponent<CottonState>();
+        if (cottonState != null && activeJarZone != null)
+        {
+            cottonState.SoakCotton(activeJarZone.soakedMaterial, activeJarZone.antisepticType);
+            Debug.Log($"[Forceps] Spawned pre-soaked cotton with {activeJarZone.antisepticType} from jar.");
+        }
+        else
+        {
+            Debug.Log("[Forceps] New cotton spawned from the jar.");
+        }
 
         // Wait half a second before allowing another spawn, giving the XRI socket time to attach
         Invoke(nameof(ResetSpawnCooldown), 0.5f);

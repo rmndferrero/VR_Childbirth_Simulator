@@ -1,10 +1,21 @@
 using UnityEngine;
 using System.Collections.Generic;
 
+public enum AntisepticType
+{
+    None,
+    Iodine_7_5_Scrub,
+    Iodine_10_Paint
+}
+
 public class CottonState : MonoBehaviour
 {
-    [Tooltip("Is this cotton ball soaked in Betadine?")]
+    [Header("Antiseptic Properties")]
+    [Tooltip("Is this cotton ball soaked in Betadine/Povidone-Iodine?")]
     public bool isSoaked = false;
+
+    [Tooltip("Which antiseptic solution this cotton is soaked in (7.5% Scrub vs 10% Paint).")]
+    public AntisepticType antisepticType = AntisepticType.None;
 
     [Tooltip("Has this cotton ball already touched the skin? Shared by both painting and stroke-zone tracking, so a cotton counts as 'spent' the moment either system marks it used.")]
     public bool isUsed = false;
@@ -40,13 +51,17 @@ public class CottonState : MonoBehaviour
         currentHolder = newHolder;
     }
 
-    public void SoakCotton(Material soakedMaterial)
+    public void SoakCotton(Material soakedMaterial, AntisepticType type = AntisepticType.Iodine_7_5_Scrub)
     {
-        if (!isSoaked && meshRenderer != null && soakedMaterial != null)
+        if (!isSoaked)
         {
-            meshRenderer.material = soakedMaterial;
+            if (meshRenderer != null && soakedMaterial != null)
+            {
+                meshRenderer.material = soakedMaterial;
+            }
             isSoaked = true;
-            Debug.Log("[CottonState] Cotton is now soaked in Betadine!");
+            antisepticType = type;
+            Debug.Log($"[CottonState] Cotton is now soaked in {type}!");
         }
     }
 }

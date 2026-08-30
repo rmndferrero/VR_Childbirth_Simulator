@@ -2,12 +2,16 @@ using UnityEngine;
 
 public class BetadinePaintZone : MonoBehaviour
 {
-    [Header("Brush Settings")]
-    [Tooltip("Drag your Betadine_Paint_Dab prefab here.")]
-    public GameObject paintDabPrefab;
+    [Header("Antiseptic Paint Prefabs")]
+    [Tooltip("Prefab for 7.5% Povidone-Iodine Scrub (Light Green, Washable).")]
+    public GameObject prefab_7_5_LightGreen;
 
+    [Tooltip("Prefab for 10% Povidone-Iodine Paint (Dark Green, Persistent).")]
+    public GameObject prefab_10_DarkGreen;
+
+    [Header("Brush Settings")]
     [Tooltip("How far the cotton must move (in meters) to drop the next dot of paint.")]
-    public float paintSpacing = 0.04f;
+    public float paintSpacing = 0.012f;
 
     private Vector3 lastPaintPosition;
     private System.Collections.Generic.List<Vector3> placedDabs = new System.Collections.Generic.List<Vector3>();
@@ -18,7 +22,7 @@ public class BetadinePaintZone : MonoBehaviour
     private void Start()
     {
         myCollider = GetComponent<Collider>();
-        paintSpacing = 0.012f; // Force a very small spacing so the stroke is completely solid and smooth
+        paintSpacing = 0.012f;
     }
 
     private void Update()
@@ -54,81 +58,101 @@ public class BetadinePaintZone : MonoBehaviour
                     
                     if (myCollider.Raycast(ray, out RaycastHit rayHit, 0.2f))
                     {
-                        HandleTouch(cotton.gameObject, rayHit.point, rayHit.normal);
+                        HandleTouch(cotton, rayHit.point, rayHit.normal);
                     }
                     else
                     {
-                        HandleTouch(cotton.gameObject, cotton.transform.position, dirToCenter * -1f);
+                        HandleTouch(cotton, cotton.transform.position, dirToCenter * -1f);
                     }
                 }
                 else
                 {
-                    HandleTouchExit(cotton.gameObject);
+                    HandleTouchExit(cotton);
                 }
             }
         }
     }
 
-    private void HandleTouch(GameObject obj, Vector3 pos, Vector3 normal)
+    private void HandleTouch(CottonState cotton, Vector3 pos, Vector3 normal)
     {
-        CottonState cotton = obj.GetComponent<CottonState>();
-        if (cotton != null && cotton.isSoaked)
+        if (cotton == null || !cotton.isSoaked) return;
+
+        // Role Enforcement: Only Handling Forceps may touch patient!
+        if (cotton.currentHolder != ForcepsRole.Handling)
         {
-            // CATCH POINT: painting should only happen while the Handling Forceps holds
-            // the cotton. Log-only for now - flip this into an actual block (e.g. `return;`)
-            // once we're ready to enforce it.
-            if (cotton.currentHolder != ForcepsRole.Handling)
+            if (Time.frameCount % 60 == 0 && PerinealCareManager.Instance != null)
             {
-                string holderName = cotton.currentHolder.HasValue ? cotton.currentHolder.Value.ToString() : "no forceps";
-                Debug.LogWarning($"[BetadinePaintZone] Violation: painting while cotton held by {holderName} - should be Handling Forceps.");
+                PerinealCareManager.Instance.RecordClinicalViolation("Clinical protocol violation: Attempted to touch patient with Pickup Forceps! Always transfer to Handling Forceps.", 5);
             }
+            return;
+        }
 
-            bool isTooClose = false;
-            foreach (Vector3 p in placedDabs)
+        // Phase Alignment Check
+        if (PerinealCareManager.Instance != null)
+        {
+            var phase = PerinealCareManager.Instance.currentState;
+            if (phase == PerinealCareState.STATE_2_IODINE_7_5 && cotton.antisepticType != AntisepticType.Iodine_7_5_Scrub)
             {
-                if (Vector3.Distance(pos, p) < paintSpacing)
+                if (Time.frameCount % 60 == 0)
                 {
-                    isTooClose = true;
-                    break;
+                    PerinealCareManager.Instance.RecordClinicalViolation("Wrong solution: Use 7.5% Iodine Scrub during Phase 2.", 5);
                 }
+                return;
             }
-
-            if (!isTooClose)
+            else if (phase == PerinealCareState.STATE_4_IODINE_10 && cotton.antisepticType != AntisepticType.Iodine_10_Paint)
             {
-                DropPaintDab(pos, normal);
-                lastPaintPosition = pos;
-                placedDabs.Add(pos);
+                if (Time.frameCount % 60 == 0)
+                {
+                    PerinealCareManager.Instance.RecordClinicalViolation("Wrong solution: Use 10% Iodine Paint during Phase 4.", 5);
+                }
+                return;
             }
+        }
+
+        bool isTooClose = false;
+        foreach (Vector3 p in placedDabs)
+        {
+            if (Vector3.Distance(pos, p) < paintSpacing)
+            {
+                isTooClose = true;
+                break;
+            }
+        }
+
+        if (!isTooClose)
+        {
+            DropPaintDab(pos, normal, cotton.antisepticType);
+            lastPaintPosition = pos;
+            placedDabs.Add(pos);
         }
     }
 
-    private void HandleTouchExit(GameObject obj)
+    private void HandleTouchExit(CottonState cotton)
     {
         lastPaintPosition = Vector3.zero;
     }
 
-    private void DropPaintDab(Vector3 position, Vector3 normal)
+    private void DropPaintDab(Vector3 position, Vector3 normal, AntisepticType type)
     {
-        if (paintDabPrefab == null) return;
+        GameObject prefabToSpawn = type == AntisepticType.Iodine_10_Paint ? prefab_10_DarkGreen : prefab_7_5_LightGreen;
+        if (prefabToSpawn == null) return;
 
-        // PULL BACK: Move the projector slightly AWAY from the skin. 
-        // This prevents the decal from clipping or getting chopped off on curved surfaces.
+        // PULL BACK: Move the projector slightly AWAY from the skin.
         Vector3 spawnPos = position + normal * 0.1f;
-
         Quaternion dabRotation = Quaternion.LookRotation(-normal);
-        GameObject newDecal = Instantiate(paintDabPrefab, spawnPos, dabRotation);
+
+        GameObject newDecal = Instantiate(prefabToSpawn, spawnPos, dabRotation);
         newDecal.transform.SetParent(transform);
 
-        // Increase the size slightly so it feels like a nice thick brush stroke
         UnityEngine.Rendering.Universal.DecalProjector proj = newDecal.GetComponent<UnityEngine.Rendering.Universal.DecalProjector>();
         if (proj != null)
         {
             proj.size = new Vector3(0.06f, 0.06f, 0.2f);
         }
+    }
 
-        if (newDecal.GetComponent<WashableDecal>() == null)
-        {
-            newDecal.AddComponent<WashableDecal>();
-        }
+    public void ClearPlacedDabsList()
+    {
+        placedDabs.Clear();
     }
 }

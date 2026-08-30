@@ -2,13 +2,27 @@ using UnityEngine;
 
 public class CottonJarZone : MonoBehaviour
 {
+    [Header("Antiseptic Configuration")]
+    [Tooltip("Which antiseptic this jar dispenses.")]
+    public AntisepticType antisepticType = AntisepticType.Iodine_7_5_Scrub;
+
+    [Tooltip("Material applied to the soaked cotton ball.")]
+    public Material soakedMaterial;
+
     private void OnTriggerEnter(Collider other)
     {
-        // Check if the object entering the jar belongs to the forceps
         ForcepsController forceps = other.GetComponentInParent<ForcepsController>();
         if (forceps != null)
         {
-            forceps.isInJarZone = true;
+            if (forceps.role == ForcepsRole.Pickup)
+            {
+                forceps.activeJarZone = this;
+                forceps.isInJarZone = true;
+            }
+            else
+            {
+                Debug.LogWarning("[CottonJarZone] Only Pickup Forceps may extract cotton from antiseptic jars!");
+            }
         }
     }
 
@@ -17,7 +31,11 @@ public class CottonJarZone : MonoBehaviour
         ForcepsController forceps = other.GetComponentInParent<ForcepsController>();
         if (forceps != null)
         {
-            forceps.isInJarZone = false;
+            if (forceps.activeJarZone == this)
+            {
+                forceps.activeJarZone = null;
+                forceps.isInJarZone = false;
+            }
         }
     }
 }

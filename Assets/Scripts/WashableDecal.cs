@@ -10,7 +10,7 @@ public class WashableDecal : MonoBehaviour
 {
     [Header("Wash Settings")]
     [Tooltip("How fast the decal fades when water hits it.")]
-    public float fadeSpeed = 0.8f;
+    public float fadeSpeed = 3.0f; // Fast, responsive washing
 
     private DecalProjector projector;
     private bool isFullyWashed = false;
@@ -19,12 +19,10 @@ public class WashableDecal : MonoBehaviour
     {
         projector = GetComponent<DecalProjector>();
 
-        // Add a small flat box collider so the pitcher raycast can detect this dab
-        // We make it thin (z=0.005) so it doesn't stick out and cause premature washing
-        BoxCollider col = gameObject.AddComponent<BoxCollider>();
+        // Add a generous sphere trigger collider so water stream easily detects and cleans this dab from any angle
+        SphereCollider col = gameObject.AddComponent<SphereCollider>();
         col.isTrigger = true;
-        col.size = new Vector3(0.04f, 0.04f, 0.005f); // Matches the 4cm decal size, but very thin
-        col.center = new Vector3(0, 0, 0.0025f);
+        col.radius = 0.045f;
     }
 
     /// <summary>

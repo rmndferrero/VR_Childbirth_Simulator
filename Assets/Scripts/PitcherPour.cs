@@ -12,6 +12,8 @@ public class PitcherPour : MonoBehaviour
     public Transform spoutOrigin;
     [Tooltip("How far down the water reaches to clean.")]
     public float pourDistance = 1.5f;
+    [Tooltip("Radius of the water stream (matches visual particle stream).")]
+    public float waterStreamRadius = 0.08f;
 
     private ParticleSystem.EmissionModule emissionModule;
     private bool isPouring = false;
@@ -31,7 +33,7 @@ public class PitcherPour : MonoBehaviour
         {
             if (!isPouring) StartPouring();
             
-            // If we are pouring, fire the cleaning raycast every frame
+            // If we are pouring, fire the cleaning spherecast every frame
             CastWaterRay();
         }
         else
@@ -60,25 +62,40 @@ public class PitcherPour : MonoBehaviour
 
     private void CastWaterRay()
     {
-        // Draw an invisible line straight down from the spout to mimic gravity
+        if (spoutOrigin == null) return;
+
+        // Draw a cylinder/spherecast straight down from the spout to mimic water stream width
         Ray ray = new Ray(spoutOrigin.position, Vector3.down);
-        // Cast the ray and get all hits (so we can wash both blood AND betadine paint)
-        RaycastHit[] hits = Physics.RaycastAll(ray, pourDistance);
+        RaycastHit[] hits = Physics.SphereCastAll(ray, waterStreamRadius, pourDistance, ~0, QueryTriggerInteraction.Collide);
         
+        System.Collections.Generic.HashSet<GameObject> processedObjects = new System.Collections.Generic.HashSet<GameObject>();
+
         foreach (RaycastHit hit in hits)
         {
-            // Check if the object we hit has the CleaningZone script (blood)
+            if (hit.collider == null) continue;
+            GameObject go = hit.collider.gameObject;
+            if (processedObjects.Contains(go)) continue;
+            processedObjects.Add(go);
+
+            // 1. Clean Blood (CleaningZone)
             CleaningZone zone = hit.collider.GetComponent<CleaningZone>();
             if (zone != null)
             {
                 zone.WashWithWater();
             }
 
-            // Check if the object we hit has the WashableDecal script (betadine paint)
+            // 2. Clean Betadine Paint (WashableDecal)
             WashableDecal decal = hit.collider.GetComponent<WashableDecal>();
             if (decal != null)
             {
                 decal.WashWithWater();
+            }
+
+            // 3. Wash Hitboxes (CleaningProgressUI)
+            PerinealWashHitbox washHitbox = hit.collider.GetComponent<PerinealWashHitbox>();
+            if (washHitbox != null && PerinealCareManager.Instance != null && PerinealCareManager.Instance.cleaningProgressUI != null)
+            {
+                washHitbox.OnWaterPoured(PerinealCareManager.Instance.cleaningProgressUI, Time.deltaTime);
             }
         }
     }
