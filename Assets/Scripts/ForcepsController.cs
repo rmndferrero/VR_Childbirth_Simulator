@@ -6,6 +6,16 @@ using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 public class ForcepsController : MonoBehaviour
 {
+    [Header("Role")]
+    [Tooltip("Is this the Pickup Forceps (grabs cotton from the jar) or the Handling Forceps (performs the actual strokes)?")]
+    public ForcepsRole role;
+
+    [Tooltip("Drag the OTHER forceps' ForcepsController here, so cotton can be transferred between them.")]
+    public ForcepsController otherForceps;
+
+    [Tooltip("How close (in meters) the two forceps' sockets need to be for a transfer to happen.")]
+    public float transferDistance = 0.05f;
+
     [Header("Component References")]
     [Tooltip("Drag the CottonSocket object here.")]
     public XRSocketInteractor cottonSocket;
@@ -37,6 +47,10 @@ public class ForcepsController : MonoBehaviour
         forcepsGrabInteractable.selectEntered.AddListener(OnForcepsGrabbed);
         forcepsGrabInteractable.selectExited.AddListener(OnForcepsReleased);
 
+        // Listen for cotton entering/leaving THIS forceps' socket, to track who holds it
+        cottonSocket.selectEntered.AddListener(OnCottonSocketed);
+        cottonSocket.selectExited.AddListener(OnCottonUnsocketed);
+
         if (leftPrimaryButton != null) leftPrimaryButton.action.Enable();
         if (rightPrimaryButton != null) rightPrimaryButton.action.Enable();
     }
@@ -45,6 +59,21 @@ public class ForcepsController : MonoBehaviour
     {
         forcepsGrabInteractable.selectEntered.RemoveListener(OnForcepsGrabbed);
         forcepsGrabInteractable.selectExited.RemoveListener(OnForcepsReleased);
+
+        cottonSocket.selectEntered.RemoveListener(OnCottonSocketed);
+        cottonSocket.selectExited.RemoveListener(OnCottonUnsocketed);
+    }
+
+    private void OnCottonSocketed(SelectEnterEventArgs args)
+    {
+        CottonState cotton = args.interactableObject.transform.GetComponent<CottonState>();
+        if (cotton != null) cotton.SetHolder(role);
+    }
+
+    private void OnCottonUnsocketed(SelectExitEventArgs args)
+    {
+        CottonState cotton = args.interactableObject.transform.GetComponent<CottonState>();
+        if (cotton != null) cotton.SetHolder(null);
     }
 
     private void OnForcepsGrabbed(SelectEnterEventArgs args)
@@ -101,10 +130,21 @@ public class ForcepsController : MonoBehaviour
         {
             cottonSocket.socketActive = true;
 
-            // NEW LOGIC: If holding the button while inside the jar, and socket is empty, spawn!
-            if (isInJarZone && !cottonSocket.hasSelection && !isSpawning)
+            // Jar spawning is Pickup Forceps only
+            if (role == ForcepsRole.Pickup && isInJarZone && !cottonSocket.hasSelection && !isSpawning)
             {
                 SpawnCotton();
+            }
+
+            // Transfer: if this socket is empty and the OTHER forceps' socket is holding
+            // cotton, and the two tips are close enough, steal it into this socket.
+            if (!cottonSocket.hasSelection && otherForceps != null && otherForceps.cottonSocket.hasSelection)
+            {
+                float distance = Vector3.Distance(cottonSocket.transform.position, otherForceps.cottonSocket.transform.position);
+                if (distance <= transferDistance)
+                {
+                    TryStealCotton();
+                }
             }
         }
         else
@@ -139,6 +179,24 @@ public class ForcepsController : MonoBehaviour
     private void ResetSpawnCooldown()
     {
         isSpawning = false;
+    }
+
+    private void TryStealCotton()
+    {
+        IXRSelectInteractable cottonInteractable = otherForceps.cottonSocket.GetOldestInteractableSelected();
+        if (cottonInteractable == null) return;
+
+        // Release from the other forceps' socket first...
+        otherForceps.cottonSocket.interactionManager.SelectCancel(
+            (IXRSelectInteractor)otherForceps.cottonSocket, cottonInteractable);
+
+        // ...then pull it into this socket. Both calls go through the Interaction Manager's
+        // normal API, so the selectEntered/selectExited events fire as usual and
+        // CottonState.SetHolder() gets called automatically in the right order.
+        cottonSocket.interactionManager.SelectEnter(
+            (IXRSelectInteractor)cottonSocket, cottonInteractable);
+
+        Debug.Log($"[Forceps] Cotton transferred: {otherForceps.role} -> {role}");
     }
 
     private void DropCotton()

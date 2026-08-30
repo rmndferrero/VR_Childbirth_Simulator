@@ -16,11 +16,28 @@ public class CottonState : MonoBehaviour
     [Tooltip("Which zone this cotton is currently recording a stroke for, if any.")]
     [HideInInspector] public StrokeZoneDefinition currentZone;
 
+    [Header("Forceps Tracking")]
+    [Tooltip("Which forceps (Pickup or Handling) currently holds this cotton, if any. Null means it's not held by either.")]
+    [HideInInspector] public ForcepsRole? currentHolder = null;
+
     private MeshRenderer meshRenderer;
 
     void Awake()
     {
         meshRenderer = GetComponent<MeshRenderer>();
+    }
+
+    // Central place to change/log who's holding this cotton, so every transfer
+    // (pickup from jar, steal between forceps, drop) is tracked consistently.
+    public void SetHolder(ForcepsRole? newHolder)
+    {
+        if (currentHolder == newHolder) return;
+
+        string from = currentHolder.HasValue ? currentHolder.Value.ToString() : "None";
+        string to = newHolder.HasValue ? newHolder.Value.ToString() : "None";
+        Debug.Log($"[CottonState] Holder changed: {from} -> {to}");
+
+        currentHolder = newHolder;
     }
 
     public void SoakCotton(Material soakedMaterial)

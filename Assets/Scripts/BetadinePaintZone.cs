@@ -74,6 +74,15 @@ public class BetadinePaintZone : MonoBehaviour
         CottonState cotton = obj.GetComponent<CottonState>();
         if (cotton != null && cotton.isSoaked)
         {
+            // CATCH POINT: painting should only happen while the Handling Forceps holds
+            // the cotton. Log-only for now - flip this into an actual block (e.g. `return;`)
+            // once we're ready to enforce it.
+            if (cotton.currentHolder != ForcepsRole.Handling)
+            {
+                string holderName = cotton.currentHolder.HasValue ? cotton.currentHolder.Value.ToString() : "no forceps";
+                Debug.LogWarning($"[BetadinePaintZone] Violation: painting while cotton held by {holderName} - should be Handling Forceps.");
+            }
+
             bool isTooClose = false;
             foreach (Vector3 p in placedDabs)
             {
