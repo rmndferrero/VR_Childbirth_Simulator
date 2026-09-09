@@ -211,14 +211,9 @@ public class VRDemoGameManager : MonoBehaviour
         if (patientAssessmentFloorHighlight != null)
             patientAssessmentFloorHighlight.SetActive(true);
 
-        // Wake up the UI Controller and feed it Phase 2
-        if (DialogueUIController.Instance != null && patientAssessmentScenario != null)
+        if (PerinealCareManager.Instance != null)
         {
-            DialogueUIController.Instance.StartDialogue(patientAssessmentScenario);
-        }
-        else
-        {
-            Debug.LogWarning("[GameManager] Missing DialogueUIController or Patient Assessment Scenario!");
+            PerinealCareManager.Instance.SetState(PerinealCareState.STATE_0_PATIENT_TALK);
         }
     }
 

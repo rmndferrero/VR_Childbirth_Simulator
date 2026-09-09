@@ -42,6 +42,9 @@ public class ForcepsController : MonoBehaviour
     private bool isHeldByLeftHand = false;
     private bool isHeldByRightHand = false;
 
+    public bool IsGrabbed => forcepsGrabInteractable != null && forcepsGrabInteractable.isSelected;
+    public bool HasCotton => cottonSocket != null && cottonSocket.hasSelection;
+
     private void OnEnable()
     {
         // Listen for when the forceps are picked up and dropped
@@ -92,8 +95,9 @@ public class ForcepsController : MonoBehaviour
         Transform current = t;
         while (current != null)
         {
-            if (current.name.ToUpper().Contains("LEFT HAND") || current.name.ToUpper().Contains("RIGHT HAND"))
-                return current.name.ToUpper();
+            string upper = current.name.ToUpper();
+            if (upper.Contains("LEFT")) return "LEFT";
+            if (upper.Contains("RIGHT")) return "RIGHT";
             current = current.parent;
         }
         return "";

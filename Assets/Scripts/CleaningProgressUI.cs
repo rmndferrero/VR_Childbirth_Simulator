@@ -2,13 +2,6 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public enum WashZone
-{
-    Center,
-    LeftGroin,
-    RightGroin
-}
-
 public class CleaningProgressUI : MonoBehaviour
 {
     [Header("UI Elements")]
@@ -17,26 +10,24 @@ public class CleaningProgressUI : MonoBehaviour
     public TMP_Text percentageText;
 
     [Header("Moving Progress Bar")]
-    public Image continuousFillImage; // Moving green fill bar (0% to 100% per zone)
+    public Image continuousFillImage;
 
     [Header("Bottom Target Indicator")]
-    public TMP_Text currentTargetText; // Text at the bottom showing active part
+    public TMP_Text currentTargetText;
 
     [Header("Settings")]
-    public float fillRate = 0.6f; // Speed of fill per zone
+    public float fillRate = 0.5f;
 
-    private WashZone currentActiveZone = WashZone.Center;
-    private float currentZoneProgress = 0f;
+    private float targetProgress = 0f;
     private float displayedFill = 0f;
     private bool isComplete = false;
-    private string baseTitle = "Water Wash Progress";
-    private float zoneSwitchCooldownTimer = 0f;
+    private bool isRinsePhase = false;
+    private string currentTitle = "Water Wash Progress";
 
     private void Awake()
     {
-        currentZoneProgress = 0f;
+        targetProgress = 0f;
         displayedFill = 0f;
-        zoneSwitchCooldownTimer = 0f;
         if (continuousFillImage != null)
         {
             continuousFillImage.fillAmount = 0f;
@@ -45,8 +36,7 @@ public class CleaningProgressUI : MonoBehaviour
 
     private void OnEnable()
     {
-        displayedFill = currentZoneProgress;
-        zoneSwitchCooldownTimer = 0f;
+        displayedFill = targetProgress;
         if (continuousFillImage != null)
         {
             continuousFillImage.fillAmount = displayedFill;
@@ -55,13 +45,8 @@ public class CleaningProgressUI : MonoBehaviour
 
     private void Update()
     {
-        if (zoneSwitchCooldownTimer > 0f)
-        {
-            zoneSwitchCooldownTimer -= Time.deltaTime;
-        }
-
-        // Smoothly animate the fill bar movement towards current zone progress
-        displayedFill = Mathf.MoveTowards(displayedFill, currentZoneProgress, Time.deltaTime * 2.0f);
+        // Smoothly animate the fill bar movement towards target progress
+        displayedFill = Mathf.MoveTowards(displayedFill, targetProgress, Time.deltaTime * 3.0f);
 
         if (continuousFillImage != null)
         {
@@ -72,8 +57,6 @@ public class CleaningProgressUI : MonoBehaviour
         {
             percentageText.text = $"{Mathf.RoundToInt(displayedFill * 100f)}%";
         }
-
-        UpdateVisuals();
     }
 
     public void Show()
@@ -86,71 +69,60 @@ public class CleaningProgressUI : MonoBehaviour
         if (rootCanvas != null) rootCanvas.SetActive(false);
     }
 
-    public void ResetProgress(string title = "Water Wash Progress")
+    /// <summary>
+    /// Configures the UI for Step 1: Preliminary Water Wash.
+    /// </summary>
+    public void ResetProgress(string title = "Step 1: Preliminary Water Wash")
     {
-        baseTitle = title;
-        currentActiveZone = WashZone.Center;
-        currentZoneProgress = 0f;
+        currentTitle = title;
+        isRinsePhase = false;
+        targetProgress = 0f;
         displayedFill = 0f;
-        zoneSwitchCooldownTimer = 0f;
         isComplete = false;
 
         if (continuousFillImage != null) continuousFillImage.fillAmount = 0f;
-        UpdateVisuals();
+        if (titleText != null) titleText.text = currentTitle;
+        if (currentTargetText != null)
+            currentTargetText.text = "Pour water from the pitcher over the perineal area to begin wash.";
+        if (percentageText != null) percentageText.text = "0%";
     }
 
-    public void ReportWaterPour(WashZone zone, float deltaTime)
+    /// <summary>
+    /// Configures the UI for Step 3: Antiseptic Water Rinse.
+    /// </summary>
+    public void ResetForRinse(string title = "Step 3: Antiseptic Rinse")
     {
-        if (isComplete || zoneSwitchCooldownTimer > 0f) return;
+        currentTitle = title;
+        isRinsePhase = true;
+        targetProgress = 0f;
+        displayedFill = 0f;
+        isComplete = false;
 
-        // Only increase progress if pouring on the current active zone
-        if (zone == currentActiveZone)
-        {
-            currentZoneProgress = Mathf.Clamp01(currentZoneProgress + fillRate * deltaTime);
-
-            // Check if current active zone reached 100%
-            if (currentZoneProgress >= 0.98f)
-            {
-                AdvanceToNextZone();
-            }
-        }
-        else
-        {
-            // Poured on wrong zone / out of order
-            if (Time.frameCount % 90 == 0 && PerinealCareManager.Instance != null)
-            {
-                string expectedName = GetZoneName(currentActiveZone);
-                string wrongName = GetZoneName(zone);
-                PerinealCareManager.Instance.RecordClinicalViolation($"Wash sequence violation: Wash {expectedName} before {wrongName}.", 2);
-            }
-        }
+        if (continuousFillImage != null) continuousFillImage.fillAmount = 0f;
+        if (titleText != null) titleText.text = currentTitle;
+        if (currentTargetText != null)
+            currentTargetText.text = "Pour water from the pitcher to rinse off all <color=#4ADE80><b>light green antiseptic</b></color>.";
+        if (percentageText != null) percentageText.text = "0%";
     }
 
-    private void AdvanceToNextZone()
+    /// <summary>
+    /// Reports water pouring during Step 1 (Preliminary Water Wash).
+    /// </summary>
+    public void ReportWashStep1(float deltaTime)
     {
-        currentZoneProgress = 1f;
-        zoneSwitchCooldownTimer = 0.7f; // Brief cooldown before next zone accepts water
+        if (isComplete || isRinsePhase) return;
 
-        if (currentActiveZone == WashZone.Center)
+        targetProgress = Mathf.Clamp01(targetProgress + fillRate * deltaTime);
+
+        if (currentTargetText != null)
+            currentTargetText.text = "Washing perineal area... <color=#38BDF8><b>" + Mathf.RoundToInt(targetProgress * 100f) + "%</b></color>";
+
+        if (targetProgress >= 0.98f && !isComplete)
         {
-            Debug.Log("[CleaningProgressUI] Center wash complete! Resetting bar for Left Groin.");
-            currentActiveZone = WashZone.LeftGroin;
-            currentZoneProgress = 0f;
-            displayedFill = 0f;
-        }
-        else if (currentActiveZone == WashZone.LeftGroin)
-        {
-            Debug.Log("[CleaningProgressUI] Left Groin wash complete! Resetting bar for Right Groin.");
-            currentActiveZone = WashZone.RightGroin;
-            currentZoneProgress = 0f;
-            displayedFill = 0f;
-        }
-        else if (currentActiveZone == WashZone.RightGroin)
-        {
-            Debug.Log("[CleaningProgressUI] Right Groin wash complete! All 3 zones finished.");
             isComplete = true;
-            currentZoneProgress = 1f;
-            displayedFill = 1f;
+            targetProgress = 1f;
+            if (currentTargetText != null)
+                currentTargetText.text = "<color=#34D399><b>Preliminary Water Wash Complete (100%)</b></color>";
 
             if (PerinealCareManager.Instance != null)
             {
@@ -159,45 +131,29 @@ public class CleaningProgressUI : MonoBehaviour
         }
     }
 
-    private void UpdateVisuals()
+    /// <summary>
+    /// Updates progress during Step 3 (Rinse) based directly on light-green puddles washed away.
+    /// </summary>
+    public void UpdateRinseProgress(float progress01)
     {
-        if (isComplete)
+        if (isComplete || !isRinsePhase) return;
+
+        targetProgress = Mathf.Clamp01(progress01);
+
+        if (currentTargetText != null)
+            currentTargetText.text = "Rinsing antiseptic... <color=#4ADE80><b>" + Mathf.RoundToInt(targetProgress * 100f) + "%</b></color>";
+
+        if (targetProgress >= 0.98f && !isComplete)
         {
-            if (titleText != null) titleText.text = $"{baseTitle} (Complete)";
-            if (currentTargetText != null) currentTargetText.text = "<color=#34D399><b>✓ All Zones Washed (100%)</b></color>";
-            return;
-        }
+            isComplete = true;
+            targetProgress = 1f;
+            if (currentTargetText != null)
+                currentTargetText.text = "<color=#34D399><b>All Antiseptic Washed Away (100%)</b></color>";
 
-        switch (currentActiveZone)
-        {
-            case WashZone.Center:
-                if (titleText != null) titleText.text = $"{baseTitle} (1 of 3: Center)";
-                if (currentTargetText != null)
-                    currentTargetText.text = $"Current Target: <color=#38BDF8><b>1. Center</b> (Labia to Perineum)</color> [{Mathf.RoundToInt(displayedFill * 100f)}%]";
-                break;
-
-            case WashZone.LeftGroin:
-                if (titleText != null) titleText.text = $"{baseTitle} (2 of 3: Left Groin)";
-                if (currentTargetText != null)
-                    currentTargetText.text = $"Current Target: <color=#38BDF8><b>2. Left Groin</b> (Inguinal Fold)</color> [{Mathf.RoundToInt(displayedFill * 100f)}%]";
-                break;
-
-            case WashZone.RightGroin:
-                if (titleText != null) titleText.text = $"{baseTitle} (3 of 3: Right Groin)";
-                if (currentTargetText != null)
-                    currentTargetText.text = $"Current Target: <color=#38BDF8><b>3. Right Groin</b> (Inguinal Fold)</color> [{Mathf.RoundToInt(displayedFill * 100f)}%]";
-                break;
-        }
-    }
-
-    private string GetZoneName(WashZone zone)
-    {
-        switch (zone)
-        {
-            case WashZone.Center: return "Center";
-            case WashZone.LeftGroin: return "Left Groin";
-            case WashZone.RightGroin: return "Right Groin";
-            default: return "Current Zone";
+            if (PerinealCareManager.Instance != null)
+            {
+                PerinealCareManager.Instance.OnWaterWashCompleted();
+            }
         }
     }
 }

@@ -86,11 +86,6 @@ public class SocketValidator : MonoBehaviour
             {
                 inputInteractor.SendHapticImpulse(0.5f, 0.2f);
             }
-            else
-            {
-                var ctrl = args.interactorObject?.transform.GetComponent<XRBaseController>();
-                if (ctrl != null) ctrl.SendHapticImpulse(0.5f, 0.2f);
-            }
 
             // Red flash → eject → warp to Table 1 (handled inside ToolItem)
             tool.HandleWrongPlacement(socket, stayRedDuration);

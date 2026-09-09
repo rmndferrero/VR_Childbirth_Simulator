@@ -31,11 +31,23 @@ public class CottonState : MonoBehaviour
     [Tooltip("Which forceps (Pickup or Handling) currently holds this cotton, if any. Null means it's not held by either.")]
     [HideInInspector] public ForcepsRole? currentHolder = null;
 
+    public static readonly HashSet<CottonState> activeCottons = new HashSet<CottonState>();
+
     private MeshRenderer meshRenderer;
 
     void Awake()
     {
         meshRenderer = GetComponent<MeshRenderer>();
+    }
+
+    void OnEnable()
+    {
+        activeCottons.Add(this);
+    }
+
+    void OnDisable()
+    {
+        activeCottons.Remove(this);
     }
 
     // Central place to change/log who's holding this cotton, so every transfer

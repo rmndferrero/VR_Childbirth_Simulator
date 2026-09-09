@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class PitcherPour : MonoBehaviour
 {
@@ -13,16 +14,33 @@ public class PitcherPour : MonoBehaviour
     [Tooltip("How far down the water reaches to clean.")]
     public float pourDistance = 1.5f;
     [Tooltip("Radius of the water stream (matches visual particle stream).")]
-    public float waterStreamRadius = 0.035f;
+    public float waterStreamRadius = 0.04f;
 
     private ParticleSystem.EmissionModule emissionModule;
     private bool isPouring = false;
+    private readonly RaycastHit[] hitBuffer = new RaycastHit[16];
+    private readonly HashSet<GameObject> processedObjects = new HashSet<GameObject>();
+    private List<WashableIodinePuddle> cachedPuddles = new List<WashableIodinePuddle>();
+
+    void Awake()
+    {
+        CachePuddles();
+    }
 
     void Start()
     {
-        // Cache the emission module so we can toggle it
-        emissionModule = waterParticleSystem.emission;
-        emissionModule.rateOverTime = 0f; // Start with water off
+        if (waterParticleSystem != null)
+        {
+            emissionModule = waterParticleSystem.emission;
+            emissionModule.rateOverTime = 0f;
+        }
+        CachePuddles();
+    }
+
+    public void CachePuddles()
+    {
+        var found = FindObjectsByType<WashableIodinePuddle>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        cachedPuddles = new List<WashableIodinePuddle>(found);
     }
 
     void Update()
@@ -32,8 +50,6 @@ public class PitcherPour : MonoBehaviour
         if (tiltAngle > pourAngleThreshold)
         {
             if (!isPouring) StartPouring();
-            
-            // If we are pouring, fire the cleaning spherecast every frame
             CastWaterRay();
         }
         else
@@ -45,57 +61,88 @@ public class PitcherPour : MonoBehaviour
     private void StartPouring()
     {
         isPouring = true;
-        emissionModule.rateOverTime = emissionRate;
-
-        // Force the system to play if it was stopped
-        if (!waterParticleSystem.isPlaying)
+        if (waterParticleSystem != null)
         {
-            waterParticleSystem.Play();
+            emissionModule.rateOverTime = emissionRate;
+            if (!waterParticleSystem.isPlaying)
+            {
+                waterParticleSystem.Play();
+            }
         }
     }
 
     private void StopPouring()
     {
         isPouring = false;
-        emissionModule.rateOverTime = 0f;
+        if (waterParticleSystem != null)
+        {
+            emissionModule.rateOverTime = 0f;
+        }
     }
 
     private void CastWaterRay()
     {
         if (spoutOrigin == null) return;
 
-        // Draw a cylinder/spherecast straight down from the spout to mimic water stream width
         Ray ray = new Ray(spoutOrigin.position, Vector3.down);
-        RaycastHit[] hits = Physics.SphereCastAll(ray, waterStreamRadius, pourDistance, ~0, QueryTriggerInteraction.Collide);
+        int hitCount = Physics.SphereCastNonAlloc(ray, waterStreamRadius, hitBuffer, pourDistance, ~0, QueryTriggerInteraction.Collide);
         
-        System.Collections.Generic.HashSet<GameObject> processedObjects = new System.Collections.Generic.HashSet<GameObject>();
+        processedObjects.Clear();
+        bool hitMotherPerineum = false;
 
-        foreach (RaycastHit hit in hits)
+        for (int i = 0; i < hitCount; i++)
         {
-            if (hit.collider == null) continue;
-            GameObject go = hit.collider.gameObject;
+            Collider col = hitBuffer[i].collider;
+            if (col == null) continue;
+            GameObject go = col.gameObject;
             if (processedObjects.Contains(go)) continue;
             processedObjects.Add(go);
 
-            // 1. Clean Blood (CleaningZone)
-            CleaningZone zone = hit.collider.GetComponent<CleaningZone>();
-            if (zone != null)
+            // Check if water hit mother anatomy / perineal zone
+            if (col.transform.root.name.Contains("Mother") || go.name.Contains("StrokeZone") || go.name.Contains("bodyfinal") || go.name.Contains("pelvis"))
             {
-                zone.WashWithWater();
+                hitMotherPerineum = true;
             }
 
-            // 2. Clean Betadine Paint (WashableDecal)
-            WashableDecal decal = hit.collider.GetComponent<WashableDecal>();
-            if (decal != null)
+            // Wash Iodine Puddles on Stroke Landmarks (Phase 3: Antiseptic Rinse)
+            WashableIodinePuddle iodinePuddle = col.GetComponent<WashableIodinePuddle>()
+                                             ?? col.GetComponentInParent<WashableIodinePuddle>()
+                                             ?? col.GetComponentInChildren<WashableIodinePuddle>();
+            if (iodinePuddle != null)
             {
-                decal.WashWithWater();
+                iodinePuddle.WashWithWater(Time.deltaTime);
             }
+        }
 
-            // 3. Wash Hitboxes (CleaningProgressUI)
-            PerinealWashHitbox washHitbox = hit.collider.GetComponent<PerinealWashHitbox>();
-            if (washHitbox != null && PerinealCareManager.Instance != null && PerinealCareManager.Instance.cleaningProgressUI != null)
+        if (PerinealCareManager.Instance == null || PerinealCareManager.Instance.cleaningProgressUI == null) return;
+
+        // 1. Step 1: Preliminary Water Wash Progress
+        if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_1_WATER_WASH && hitMotherPerineum)
+        {
+            PerinealCareManager.Instance.cleaningProgressUI.ReportWashStep1(Time.deltaTime);
+        }
+        // 2. Step 3: Antiseptic Water Rinse Progress (based on light-green puddles washed away)
+        else if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_3_WATER_RINSE)
+        {
+            if (cachedPuddles == null || cachedPuddles.Count == 0) CachePuddles();
+
+            if (cachedPuddles != null && cachedPuddles.Count > 0)
             {
-                washHitbox.OnWaterPoured(PerinealCareManager.Instance.cleaningProgressUI, Time.deltaTime);
+                float totalCleanliness = 0f;
+                for (int p = 0; p < cachedPuddles.Count; p++)
+                {
+                    var pud = cachedPuddles[p];
+                    if (pud != null)
+                    {
+                        totalCleanliness += (1.0f - pud.GetRemainingOpacity());
+                    }
+                    else
+                    {
+                        totalCleanliness += 1.0f;
+                    }
+                }
+                float progress = totalCleanliness / cachedPuddles.Count;
+                PerinealCareManager.Instance.cleaningProgressUI.UpdateRinseProgress(progress);
             }
         }
     }

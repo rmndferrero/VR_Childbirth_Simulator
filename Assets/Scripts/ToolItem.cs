@@ -88,12 +88,20 @@ public class ToolItem : MonoBehaviour
         // Lock kinematic while resting on table so player physical collisions cannot push or knock over tools
         if (rb != null)
         {
+            SafeResetVelocity(rb);
             rb.isKinematic = true;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
         }
 
         IgnoreCollisionsWithOtherToolsAndPlayer();
+    }
+
+    private void SafeResetVelocity(Rigidbody body)
+    {
+        if (body != null && !body.isKinematic)
+        {
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+        }
     }
 
     /// <summary>
@@ -124,7 +132,7 @@ public class ToolItem : MonoBehaviour
         }
 
         // Ignore collisions with player body / CharacterController colliders
-        CharacterController[] playerControllers = FindObjectsOfType<CharacterController>();
+        CharacterController[] playerControllers = FindObjectsByType<CharacterController>(FindObjectsSortMode.None);
         foreach (var cc in playerControllers)
         {
             if (cc == null) continue;
@@ -231,9 +239,8 @@ public class ToolItem : MonoBehaviour
         // Lock kinematic on Table 2 so it won't move when player gets near
         if (rb != null)
         {
+            SafeResetVelocity(rb);
             rb.isKinematic = true;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
         }
 
         // Re-enable grab in case a reject coroutine disabled it
@@ -311,9 +318,8 @@ public class ToolItem : MonoBehaviour
     {
         if (rb != null)
         {
+            SafeResetVelocity(rb);
             rb.isKinematic = true;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
         }
 
         transform.position = table2Pos;
@@ -336,9 +342,8 @@ public class ToolItem : MonoBehaviour
 
         if (rb != null)
         {
+            SafeResetVelocity(rb);
             rb.isKinematic = true;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
         }
 
         transform.position = homePos;
