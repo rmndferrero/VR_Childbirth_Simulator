@@ -4,21 +4,33 @@ using UnityEngine;
 
 public enum PerinealCareState
 {
-    STATE_0_PATIENT_TALK,
-    STATE_1_WATER_WASH,
-    STATE_2_IODINE_7_5,
-    STATE_3_WATER_RINSE,
-    STATE_4_IODINE_10,
-    STATE_5_DRAPING,
-    STATE_6_COMPLETION
+    STATE_1_TALK_TO_MOTHER,
+    STATE_2_PRELIMINARY_WATER_WASH,
+    STATE_3_IODINE_7_5_SCRUB,
+    STATE_4_ANTISEPTIC_RINSE,
+    STATE_5_IODINE_10_PAINT,
+    STATE_6_STERILE_DRAPING,
+    STATE_7_SETUP_TABLE,
+    STATE_8_FINAL_SUMMARY
 }
 
+/// <summary>
+/// Controls the step-by-step clinical state progression:
+/// Step 1: Talk to Mother / Informed Consent
+/// Step 2: Preliminary Water Wash (0-100%)
+/// Step 3: 7.5% Iodine 9-Ball Technique (Washable light green puddles)
+/// Step 4: Antiseptic Rinse (Pitcher washes puddles 0-100%)
+/// Step 5: 10% Iodine Surgical Paint (Persistent amber coating)
+/// Step 6: Sterile Draping (Strict two-handed grab, 4 zones)
+/// Step 7: Setup Table (Placeholder / Mayo prep)
+/// Step 8: Done / Final Score Calculation & Evaluation Summary UI
+/// </summary>
 public class PerinealCareManager : MonoBehaviour
 {
     public static PerinealCareManager Instance { get; private set; }
 
     [Header("Current State")]
-    public PerinealCareState currentState = PerinealCareState.STATE_0_PATIENT_TALK;
+    public PerinealCareState currentState = PerinealCareState.STATE_1_TALK_TO_MOTHER;
 
     [Header("UI References")]
     public FloatingPokeDialogueUI floatingDialogueUI;
@@ -42,10 +54,18 @@ public class PerinealCareManager : MonoBehaviour
     private void Awake()
     {
         if (Instance == null) Instance = this;
-        else Destroy(gameObject);
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
 
-        if (motherDrapingManager == null)
-            motherDrapingManager = FindFirstObjectByType<MotherDrapingManager>();
+        if (floatingDialogueUI == null) floatingDialogueUI = FindFirstObjectByType<FloatingPokeDialogueUI>(FindObjectsInactive.Include);
+        if (cleaningProgressUI == null) cleaningProgressUI = FindFirstObjectByType<CleaningProgressUI>(FindObjectsInactive.Include);
+        if (strokeGuideUI == null) strokeGuideUI = FindFirstObjectByType<StrokeGuideUI>(FindObjectsInactive.Include);
+        if (strokeTrackingManager == null) strokeTrackingManager = FindFirstObjectByType<StrokeTrackingManager>();
+        if (pitcherPour == null) pitcherPour = FindFirstObjectByType<PitcherPour>();
+        if (motherDrapingManager == null) motherDrapingManager = FindFirstObjectByType<MotherDrapingManager>();
 
         if (drapingGuideUI == null)
             drapingGuideUI = FindFirstObjectByType<DrapingGuideUI>(FindObjectsInactive.Include);
@@ -72,35 +92,35 @@ public class PerinealCareManager : MonoBehaviour
 
     private void Start()
     {
-        SetState(PerinealCareState.STATE_0_PATIENT_TALK);
+        SetState(PerinealCareState.STATE_1_TALK_TO_MOTHER);
     }
 
     public void SetState(PerinealCareState newState)
     {
         currentState = newState;
-        Debug.Log($"[PerinealCareManager] Transitioned to state: {currentState}");
+        Debug.Log($"[PerinealCareManager] Transitioned to state: {currentState} (Step {(int)currentState + 1} of 8)");
 
         switch (currentState)
         {
-            case PerinealCareState.STATE_0_PATIENT_TALK:
+            case PerinealCareState.STATE_1_TALK_TO_MOTHER:
                 if (floatingDialogueUI != null) floatingDialogueUI.ShowInitialPrompt();
                 if (cleaningProgressUI != null) cleaningProgressUI.Hide();
                 if (strokeGuideUI != null) strokeGuideUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
                 break;
 
-            case PerinealCareState.STATE_1_WATER_WASH:
+            case PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH:
                 if (floatingDialogueUI != null) floatingDialogueUI.Hide();
                 if (strokeGuideUI != null) strokeGuideUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
                 if (cleaningProgressUI != null)
                 {
-                    cleaningProgressUI.ResetProgress("Step 1: Preliminary Water Wash");
+                    cleaningProgressUI.ResetProgress("Step 2: Preliminary Water Wash");
                     cleaningProgressUI.Show();
                 }
                 break;
 
-            case PerinealCareState.STATE_2_IODINE_7_5:
+            case PerinealCareState.STATE_3_IODINE_7_5_SCRUB:
                 if (cleaningProgressUI != null) cleaningProgressUI.Hide();
                 if (floatingDialogueUI != null) floatingDialogueUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
@@ -113,7 +133,7 @@ public class PerinealCareManager : MonoBehaviour
                     if (showFloatingTextGuide)
                     {
                         if (strokeGuideUI.phaseTitleText != null)
-                            strokeGuideUI.phaseTitleText.text = "Step 2: 7.5% Povidone-Iodine Scrub (9-Ball Technique)";
+                            strokeGuideUI.phaseTitleText.text = "Step 3: 7.5% Povidone-Iodine Scrub (9-Ball Technique)";
                         strokeGuideUI.Show();
                     }
                     else
@@ -121,22 +141,22 @@ public class PerinealCareManager : MonoBehaviour
                         strokeGuideUI.Hide();
                     }
                 }
-                Debug.Log("[PerinealCareManager] 7.5% Iodine Scrub Phase Started. Use Pickup Forceps -> 7.5% Jar -> Handling Forceps.");
+                Debug.Log("[PerinealCareManager] Step 3: 7.5% Iodine Scrub Started. 3D guides appear when holding handling forceps + cotton.");
                 break;
 
-            case PerinealCareState.STATE_3_WATER_RINSE:
+            case PerinealCareState.STATE_4_ANTISEPTIC_RINSE:
                 if (strokeGuideUI != null) strokeGuideUI.Hide();
                 if (floatingDialogueUI != null) floatingDialogueUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
                 if (cleaningProgressUI != null)
                 {
-                    cleaningProgressUI.ResetForRinse("Step 3: Antiseptic Rinse");
+                    cleaningProgressUI.ResetForRinse("Step 4: Antiseptic Rinse");
                     cleaningProgressUI.Show();
                 }
-                Debug.Log("[PerinealCareManager] Antiseptic Water Rinse Started. Wash away the light green puddles.");
+                Debug.Log("[PerinealCareManager] Step 4: Antiseptic Rinse Started. Wash away all light green puddles with water pitcher.");
                 break;
 
-            case PerinealCareState.STATE_4_IODINE_10:
+            case PerinealCareState.STATE_5_IODINE_10_PAINT:
                 if (cleaningProgressUI != null) cleaningProgressUI.Hide();
                 if (floatingDialogueUI != null) floatingDialogueUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
@@ -149,7 +169,7 @@ public class PerinealCareManager : MonoBehaviour
                     if (showFloatingTextGuide)
                     {
                         if (strokeGuideUI.phaseTitleText != null)
-                            strokeGuideUI.phaseTitleText.text = "Step 4: 10% Povidone-Iodine Antiseptic Paint (Surgical Prep)";
+                            strokeGuideUI.phaseTitleText.text = "Step 5: 10% Povidone-Iodine Antiseptic Paint (Surgical Prep)";
                         strokeGuideUI.Show();
                     }
                     else
@@ -157,15 +177,15 @@ public class PerinealCareManager : MonoBehaviour
                         strokeGuideUI.Hide();
                     }
                 }
-                Debug.Log("[PerinealCareManager] 10% Iodine Paint Phase Started. Use Pickup Forceps -> 10% Jar -> Handling Forceps.");
+                Debug.Log("[PerinealCareManager] Step 5: 10% Iodine Paint Started. Persistent amber surgical coating.");
                 break;
 
-            case PerinealCareState.STATE_5_DRAPING:
+            case PerinealCareState.STATE_6_STERILE_DRAPING:
                 if (cleaningProgressUI != null) cleaningProgressUI.Hide();
                 if (floatingDialogueUI != null) floatingDialogueUI.Hide();
                 if (strokeGuideUI != null) strokeGuideUI.Hide();
-                
-                // Automatically transition player hands to sterile surgical blue gloves
+
+                // Automatically equip player hands with sterile surgical blue gloves
                 if (PlayerHandMaterialManager.Instance != null)
                 {
                     PlayerHandMaterialManager.Instance.EquipGloves();
@@ -187,15 +207,30 @@ public class PerinealCareManager : MonoBehaviour
                 {
                     motherDrapingManager.BeginDrapingPhase();
                 }
-                Debug.Log("[PerinealCareManager] Sterile Draping Phase Started. Player equipped blue gloves. Place dry linen on Under Buttocks -> Abdominal -> Left Leg -> Right Leg.");
+                Debug.Log("[PerinealCareManager] Step 6: Sterile Draping Started. Player equipped blue gloves. Place dry linen on Under Buttocks -> Abdomen -> Left Thigh -> Right Thigh.");
                 break;
 
-            case PerinealCareState.STATE_6_COMPLETION:
+            case PerinealCareState.STATE_7_SETUP_TABLE:
                 if (cleaningProgressUI != null) cleaningProgressUI.Hide();
                 if (strokeGuideUI != null) strokeGuideUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
-                if (floatingDialogueUI != null) floatingDialogueUI.ShowCompletionPrompt();
-                Debug.Log("[PerinealCareManager] Perineal Preparation and Sterile Draping Finished! Notify the mother.");
+                if (floatingDialogueUI != null) floatingDialogueUI.ShowSetupTablePrompt();
+                Debug.Log("[PerinealCareManager] Step 7: Setup Table (Mayo Prep Placeholder).");
+                break;
+
+            case PerinealCareState.STATE_8_FINAL_SUMMARY:
+                if (cleaningProgressUI != null) cleaningProgressUI.Hide();
+                if (strokeGuideUI != null) strokeGuideUI.Hide();
+                if (drapingGuideUI != null) drapingGuideUI.Hide();
+                if (VRDemoGameManager.Instance != null)
+                {
+                    VRDemoGameManager.Instance.ShowFinalSummary();
+                }
+                else if (floatingDialogueUI != null)
+                {
+                    floatingDialogueUI.ShowSummaryEvaluation(100 - (totalMistakes * 5), procedureLog);
+                }
+                Debug.Log("[PerinealCareManager] Step 8: Procedure Complete! Showing Final Score & Mistake Breakdown Summary UI.");
                 break;
         }
 
@@ -204,53 +239,102 @@ public class PerinealCareManager : MonoBehaviour
 
     public void OnMotherInformedConsentGiven()
     {
-        if (currentState == PerinealCareState.STATE_0_PATIENT_TALK)
+        if (currentState == PerinealCareState.STATE_1_TALK_TO_MOTHER)
         {
-            SetState(PerinealCareState.STATE_1_WATER_WASH);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep1_Consent();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH);
+            }
         }
     }
 
     public void OnWaterWashCompleted()
     {
-        if (currentState == PerinealCareState.STATE_1_WATER_WASH)
+        if (currentState == PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH)
         {
-            SetState(PerinealCareState.STATE_2_IODINE_7_5);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep2_WaterWash();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_3_IODINE_7_5_SCRUB);
+            }
         }
-        else if (currentState == PerinealCareState.STATE_3_WATER_RINSE)
+        else if (currentState == PerinealCareState.STATE_4_ANTISEPTIC_RINSE)
         {
-            SetState(PerinealCareState.STATE_4_IODINE_10);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep4_Rinse();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_5_IODINE_10_PAINT);
+            }
         }
     }
 
     public void On7_5ScrubCompleted()
     {
-        if (currentState == PerinealCareState.STATE_2_IODINE_7_5)
+        if (currentState == PerinealCareState.STATE_3_IODINE_7_5_SCRUB)
         {
-            SetState(PerinealCareState.STATE_3_WATER_RINSE);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep3_7_5Scrub();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_4_ANTISEPTIC_RINSE);
+            }
         }
     }
 
     public void On10PaintCompleted()
     {
-        if (currentState == PerinealCareState.STATE_4_IODINE_10)
+        if (currentState == PerinealCareState.STATE_5_IODINE_10_PAINT)
         {
-            SetState(PerinealCareState.STATE_5_DRAPING);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep5_10Paint();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_6_STERILE_DRAPING);
+            }
         }
     }
 
     public void OnDrapingCompleted()
     {
-        if (currentState == PerinealCareState.STATE_5_DRAPING)
+        if (currentState == PerinealCareState.STATE_6_STERILE_DRAPING)
         {
-            SetState(PerinealCareState.STATE_6_COMPLETION);
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep6_Draping();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_7_SETUP_TABLE);
+            }
         }
     }
 
-    public void OnProcedureFinishedAndMotherNotified()
+    public void OnSetupTableCompleted()
     {
-        if (currentState == PerinealCareState.STATE_6_COMPLETION)
+        if (currentState == PerinealCareState.STATE_7_SETUP_TABLE)
         {
-            EvaluateProcedure();
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.AdvanceFromStep7_SetupTable();
+            }
+            else
+            {
+                SetState(PerinealCareState.STATE_8_FINAL_SUMMARY);
+            }
         }
     }
 
@@ -262,16 +346,7 @@ public class PerinealCareManager : MonoBehaviour
 
         if (VRDemoGameManager.Instance != null)
         {
-            VRDemoGameManager.Instance.currentScenarioScore = Mathf.Max(0, VRDemoGameManager.Instance.currentScenarioScore - penaltyPoints);
-        }
-    }
-
-    private void EvaluateProcedure()
-    {
-        Debug.Log($"[PerinealCareManager] Evaluation complete! Total Violations: {totalMistakes}");
-        if (VRDemoGameManager.Instance != null)
-        {
-            VRDemoGameManager.Instance.CompletePatientAssessment();
+            VRDemoGameManager.Instance.RecordMistake(message, penaltyPoints);
         }
     }
 }

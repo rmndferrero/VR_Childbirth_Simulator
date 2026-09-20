@@ -6,9 +6,9 @@ using Unity.XR.CoreUtils;
 /// <summary>
 /// 1. Automatically aligns the XR player's head camera to the desired starting position
 ///    and rotation in the scene on game start.
-/// 2. Configures the Player CharacterController to pass through everything (tables, carts,
-///    mother, tools, props) so the player never snags, gets stuck, or flies, while ONLY
-///    colliding with the room ENVIRONMENT (walls, floor, ceiling).
+/// 2. Grounds the XR Origin base firmly at floor level (Y = 0) so the player never falls through the floor on PC or VR.
+/// 3. Configures the Player CharacterController to pass through everything (tables, carts,
+///    mother, tools, props) while retaining solid collision with walls and floor.
 /// </summary>
 [RequireComponent(typeof(XROrigin))]
 public class XRPlayerSpawnAligner : MonoBehaviour
@@ -24,11 +24,6 @@ public class XRPlayerSpawnAligner : MonoBehaviour
 
     [Tooltip("Default forward look direction.")]
     public Vector3 defaultForwardDirection = new Vector3(-0.95f, -0.15f, 0.25f);
-
-    [Header("Behavior Settings")]
-    [Tooltip("Also enforce a minimum eye-level floor height even if physical headset is lower.")]
-    public bool enforceMinimumHeadHeight = true;
-    public float minimumHeadHeight = 1.30f;
 
     [Header("Collision Filtering")]
     [Tooltip("If true, the player passes through all tables, carts, mother, and props, colliding ONLY with walls and floor.")]
@@ -52,6 +47,7 @@ public class XRPlayerSpawnAligner : MonoBehaviour
 
     private void Start()
     {
+        AlignPlayerToSpawn();
         if (environmentOnlyCollisions)
         {
             SetupEnvironmentOnlyCollisions();
@@ -72,12 +68,18 @@ public class XRPlayerSpawnAligner : MonoBehaviour
         if (environmentOnlyCollisions) SetupEnvironmentOnlyCollisions();
         yield return new WaitForSeconds(0.2f);
         AlignPlayerToSpawn();
-        yield return new WaitForSeconds(0.5f);
-        AlignPlayerToSpawn();
     }
 
     private void Update()
     {
+        // Safety floor lock: keep XR Origin base on the floor
+        if (transform.position.y < -0.1f)
+        {
+            Vector3 pos = transform.position;
+            pos.y = 0.0f;
+            transform.position = pos;
+        }
+
         // Press 'R' on keyboard in Editor to instantly recenter/re-align to spawn
         if (Application.isEditor)
         {
@@ -105,9 +107,12 @@ public class XRPlayerSpawnAligner : MonoBehaviour
         {
             if (col == null || col == characterController) continue;
 
-            if (envColliders.Contains(col))
+            string colName = col.gameObject.name.ToLower();
+            bool isFloorOrWall = envColliders.Contains(col) || colName.Contains("floor") || colName.Contains("plane") || colName.Contains("ground") || colName.Contains("wall");
+
+            if (isFloorOrWall)
             {
-                // Solid barrier: Only floor, walls, and ceiling
+                // Solid barrier: Floor, walls, and ceiling
                 Physics.IgnoreCollision(characterController, col, false);
             }
             else
@@ -127,7 +132,8 @@ public class XRPlayerSpawnAligner : MonoBehaviour
     }
 
     /// <summary>
-    /// Repositions the XR Origin so the player's main camera lands exactly on the target spot.
+    /// Repositions the XR Origin so the player's base sits firmly on the floor at Y = 0,
+    /// aligned horizontally and facing the delivery bed.
     /// </summary>
     public void AlignPlayerToSpawn()
     {
@@ -137,20 +143,14 @@ public class XRPlayerSpawnAligner : MonoBehaviour
         Vector3 targetPos = (customSpawnPoint != null) ? customSpawnPoint.position : defaultHeadWorldPosition;
         Vector3 targetForward = (customSpawnPoint != null) ? customSpawnPoint.forward : defaultForwardDirection;
 
-        // If headset is on the floor or too low, ensure target eye level is maintained
-        if (enforceMinimumHeadHeight && targetPos.y < minimumHeadHeight)
-        {
-            targetPos.y = minimumHeadHeight;
-        }
+        // 1. Firmly place the XR Origin base on the floor at Y = 0
+        transform.position = new Vector3(targetPos.x, 0.0f, targetPos.z);
 
-        // Shift the rig so the camera matches target world position
-        xrOrigin.MoveCameraToWorldLocation(targetPos);
-
-        // Align forward direction towards the patient
+        // 2. Align forward direction towards the patient
         targetForward.y = 0; // Keep horizon level
         if (targetForward.sqrMagnitude > 0.001f)
         {
-            xrOrigin.MatchOriginUpCameraForward(Vector3.up, targetForward.normalized);
+            transform.rotation = Quaternion.LookRotation(targetForward.normalized, Vector3.up);
         }
     }
 

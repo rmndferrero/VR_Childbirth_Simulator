@@ -79,6 +79,13 @@ public class ToolItem : MonoBehaviour
         }
     }
 
+    // Return sockets tracking
+    private readonly List<ToolReturnSocket> nearbySockets = new List<ToolReturnSocket>();
+    private ToolReturnSocket table1Socket;
+    private ToolReturnSocket table2Socket;
+
+    public bool IsBeingHeld => grab != null && grab.isSelected;
+
     private void Start()
     {
         homePos = transform.position;
@@ -92,7 +99,49 @@ public class ToolItem : MonoBehaviour
             rb.isKinematic = true;
         }
 
+        EnsureTable1ReturnSocket();
         IgnoreCollisionsWithOtherToolsAndPlayer();
+    }
+
+    private void EnsureTable1ReturnSocket()
+    {
+        if (table1Socket == null)
+        {
+            GameObject sockObj = new GameObject($"{gameObject.name}_Table1Socket");
+            sockObj.transform.position = homePos;
+            sockObj.transform.rotation = homeRot;
+            if (transform.parent != null) sockObj.transform.SetParent(transform.parent, true);
+
+            table1Socket = sockObj.AddComponent<ToolReturnSocket>();
+            table1Socket.targetTool = this;
+            table1Socket.targetToolID = toolID;
+        }
+    }
+
+    public void RegisterNearbyReturnSocket(ToolReturnSocket socket)
+    {
+        if (socket != null && !nearbySockets.Contains(socket))
+        {
+            nearbySockets.Add(socket);
+        }
+    }
+
+    public void UnregisterNearbyReturnSocket(ToolReturnSocket socket)
+    {
+        if (socket != null)
+        {
+            nearbySockets.Remove(socket);
+        }
+    }
+
+    public void OnToolSafelyReturned()
+    {
+        CancelDropTimer();
+        if (rb != null)
+        {
+            SafeResetVelocity(rb);
+            rb.isKinematic = true;
+        }
     }
 
     private void SafeResetVelocity(Rigidbody body)
@@ -170,15 +219,51 @@ public class ToolItem : MonoBehaviour
             rb.isKinematic = false;
         }
 
-        if (VRDemoGameManager.Instance != null)
+        // Check if player tries to use/grab any tool before talking to mother in Step 1
+        if (VRDemoGameManager.Instance != null && VRDemoGameManager.Instance.currentSimulationPhase == SimulationPhase.STEP_1_TALK_TO_MOTHER)
+        {
+            if (VRHeadsetVisualFeedback.Instance != null)
+            {
+                VRHeadsetVisualFeedback.Instance.TriggerStep1ToolViolation(toolID);
+            }
+        }
+        else if (VRDemoGameManager.Instance != null)
+        {
             VRDemoGameManager.Instance.CheckHeldToolHazard(toolID);
+        }
     }
 
     private void OnReleased(SelectExitEventArgs args)
     {
         if (isBeingRejected) return;
 
-        // Enable physics gravity so the tool falls naturally when dropped in mid-air
+        // Check if released within snap range of any nearby return socket (Option A)
+        ToolReturnSocket bestSocket = null;
+        float bestDist = float.MaxValue;
+
+        for (int i = nearbySockets.Count - 1; i >= 0; i--)
+        {
+            var sock = nearbySockets[i];
+            if (sock != null && sock.CanAcceptTool(this))
+            {
+                float d = Vector3.Distance(transform.position, sock.snapTransform.position);
+                if (d <= sock.snapRadius && d < bestDist)
+                {
+                    bestDist = d;
+                    bestSocket = sock;
+                }
+            }
+        }
+
+        if (bestSocket != null)
+        {
+            // Snapped cleanly into socket -> Safe return with 0 penalty!
+            CancelDropTimer();
+            bestSocket.SnapTool(this);
+            return;
+        }
+
+        // Otherwise, enable physics gravity so the tool falls naturally when dropped in mid-air
         if (rb != null)
         {
             rb.isKinematic = false;
@@ -199,13 +284,19 @@ public class ToolItem : MonoBehaviour
     }
 
     /// <summary>
-    /// Lets the tool drop/fall under gravity for 1.2s, then snaps it back to its current table if unheld.
+    /// Lets the tool drop/fall under gravity for 1.2s, then applies drop penalty and snaps it back to its table slot.
     /// </summary>
     private IEnumerator DropTimerRoutine()
     {
         yield return new WaitForSeconds(1.2f);
         if (grab != null && !grab.isSelected && !isBeingRejected)
         {
+            // Dropped outside valid table socket -> Record contamination penalty
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.RecordDropPenalty(toolID, $"Sterile Violation: {toolID} dropped! Return instruments to the sterile tray.");
+            }
+
             if (isLockedOnTable2)
             {
                 WarpToTable2();
@@ -236,6 +327,17 @@ public class ToolItem : MonoBehaviour
         table2Pos = slotPos;
         table2Rot = slotRot;
 
+        // Ensure Table 2 has a return socket for this tool
+        if (table2Socket == null)
+        {
+            GameObject sockObj = new GameObject($"{gameObject.name}_Table2Socket");
+            sockObj.transform.position = table2Pos;
+            sockObj.transform.rotation = table2Rot;
+            table2Socket = sockObj.AddComponent<ToolReturnSocket>();
+            table2Socket.targetTool = this;
+            table2Socket.targetToolID = toolID;
+        }
+
         // Lock kinematic on Table 2 so it won't move when player gets near
         if (rb != null)
         {
@@ -258,7 +360,10 @@ public class ToolItem : MonoBehaviour
         isBeingRejected = true;
 
         if (rejectCo != null)
+        {
             StopCoroutine(rejectCo);
+            rejectCo = null;
+        }
 
         rejectCo = StartCoroutine(RejectRoutine(socket, redDuration));
     }

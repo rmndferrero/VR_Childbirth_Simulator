@@ -274,7 +274,7 @@ public class DrapingGuideUI : MonoBehaviour
                 if (tName.Contains("phase") || tName.Contains("header"))
                 {
                     phaseTitleText = t;
-                    phaseTitleText.text = "Step 5: Sterile Draping of the Mother";
+                    phaseTitleText.text = "Step 6: Sterile Draping of the Mother";
                 }
                 else if (tName.Contains("stroke") || tName.Contains("title") || tName.Contains("target"))
                 {

@@ -30,10 +30,12 @@ public class CottonState : MonoBehaviour
     [Header("Forceps Tracking")]
     [Tooltip("Which forceps (Pickup or Handling) currently holds this cotton, if any. Null means it's not held by either.")]
     [HideInInspector] public ForcepsRole? currentHolder = null;
+    [HideInInspector] public bool isSafelyDiscarded = false;
 
     public static readonly HashSet<CottonState> activeCottons = new HashSet<CottonState>();
 
     private MeshRenderer meshRenderer;
+    private Coroutine dropCo;
 
     void Awake()
     {
@@ -48,6 +50,11 @@ public class CottonState : MonoBehaviour
     void OnDisable()
     {
         activeCottons.Remove(this);
+        if (dropCo != null)
+        {
+            StopCoroutine(dropCo);
+            dropCo = null;
+        }
     }
 
     // Central place to change/log who's holding this cotton, so every transfer
@@ -61,6 +68,63 @@ public class CottonState : MonoBehaviour
         Debug.Log($"[CottonState] Holder changed: {from} -> {to}");
 
         currentHolder = newHolder;
+
+        if (currentHolder == null && !isSafelyDiscarded)
+        {
+            // Released from forceps -> start drop timer
+            if (dropCo != null)
+            {
+                StopCoroutine(dropCo);
+                dropCo = null;
+            }
+            dropCo = StartCoroutine(UnheldDropCheckRoutine());
+        }
+        else if (currentHolder != null)
+        {
+            // Held by forceps -> cancel drop timer
+            if (dropCo != null)
+            {
+                StopCoroutine(dropCo);
+                dropCo = null;
+            }
+        }
+    }
+
+    private System.Collections.IEnumerator UnheldDropCheckRoutine()
+    {
+        yield return new WaitForSeconds(1.8f);
+
+        if (currentHolder == null && !isSafelyDiscarded)
+        {
+            // Dropped outside waste basin -> Record contamination penalty
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped! Always discard used cotton into the waste basin.");
+            }
+
+            Destroy(gameObject);
+        }
+        dropCo = null;
+    }
+
+    private void Update()
+    {
+        // Safety check: if falling below floor level while unheld, penalize and destroy immediately
+        if (currentHolder == null && !isSafelyDiscarded && transform.position.y < 0.35f)
+        {
+            if (dropCo != null)
+            {
+                StopCoroutine(dropCo);
+                dropCo = null;
+            }
+
+            if (VRDemoGameManager.Instance != null)
+            {
+                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped on the floor! Discard into the waste basin.");
+            }
+
+            Destroy(gameObject);
+        }
     }
 
     public void SoakCotton(Material soakedMaterial, AntisepticType type = AntisepticType.Iodine_7_5_Scrub)

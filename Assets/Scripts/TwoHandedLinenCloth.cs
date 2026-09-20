@@ -143,6 +143,14 @@ public class TwoHandedLinenCloth : MonoBehaviour
         EnsureAttachPoints();
         RouteAttachPointForInteractor(args.interactorObject);
         CheckGripState();
+
+        if (VRDemoGameManager.Instance != null && VRDemoGameManager.Instance.currentSimulationPhase == SimulationPhase.STEP_1_TALK_TO_MOTHER)
+        {
+            if (VRHeadsetVisualFeedback.Instance != null)
+            {
+                VRHeadsetVisualFeedback.Instance.TriggerStep1ToolViolation("Sterile Linen");
+            }
+        }
     }
 
     private void OnSelectExited(SelectExitEventArgs args)

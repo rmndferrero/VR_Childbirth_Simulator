@@ -116,13 +116,13 @@ public class PitcherPour : MonoBehaviour
 
         if (PerinealCareManager.Instance == null || PerinealCareManager.Instance.cleaningProgressUI == null) return;
 
-        // 1. Step 1: Preliminary Water Wash Progress
-        if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_1_WATER_WASH && hitMotherPerineum)
+        // 1. Step 2: Preliminary Water Wash Progress
+        if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH && hitMotherPerineum)
         {
             PerinealCareManager.Instance.cleaningProgressUI.ReportWashStep1(Time.deltaTime);
         }
-        // 2. Step 3: Antiseptic Water Rinse Progress (based on light-green puddles washed away)
-        else if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_3_WATER_RINSE)
+        // 2. Step 4: Antiseptic Water Rinse Progress (based on light-green puddles washed away)
+        else if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_4_ANTISEPTIC_RINSE)
         {
             if (cachedPuddles == null || cachedPuddles.Count == 0) CachePuddles();
 

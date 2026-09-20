@@ -57,9 +57,6 @@ public class MotherDrapingManager : MonoBehaviour
     public AudioClip drapePlaceAudio;
     public AudioClip drapeMistakeAudio;
 
-    [Header("Pulse Animation Settings")]
-    public float ghostPulseSpeed = 4.0f;
-
     public event Action<int, DrapeSlot> OnDrapePlaced;
     public event Action OnAllDrapesCompleted;
 
@@ -73,11 +70,11 @@ public class MotherDrapingManager : MonoBehaviour
 
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
 
-        LoadMaterialsIfNull();
+        LoadAssetsIfNull();
         CacheInitialLinenTransform();
     }
 
-    private void LoadMaterialsIfNull()
+    private void LoadAssetsIfNull()
     {
         if (ghostMaterial == null)
         {
@@ -90,7 +87,8 @@ public class MotherDrapingManager : MonoBehaviour
         if (inactiveGuideMaterial == null)
         {
 #if UNITY_EDITOR
-            inactiveGuideMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Inactive_Mat.mat");
+            inactiveGuideMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Inactive_Mat.mat")
+                                 ?? ghostMaterial;
 #endif
         }
 
@@ -273,15 +271,6 @@ public class MotherDrapingManager : MonoBehaviour
             }
         }
     }
-
-    private void Update()
-    {
-        // Scale pulsing intentionally disabled so players cannot tell which order to place
-    }
-
-    public void OnLinenHoverEnter(int slotIndex, GameObject linenObj) { }
-    public void OnLinenHoverStay(int slotIndex, GameObject linenObj) { }
-    public void OnLinenHoverExit(int slotIndex, GameObject linenObj) { }
 
     /// <summary>
     /// Returns the number of currently completed / draped zones (0 to 4).

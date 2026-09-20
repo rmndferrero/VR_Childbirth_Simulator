@@ -28,11 +28,6 @@ public class DrapingZoneTrigger : MonoBehaviour
         if (drapingManager == null || !drapingManager.isDrapingActive) return;
 
         dwellTimer = 0f;
-        GameObject linenObj = GetLinenObject(other);
-        if (linenObj != null)
-        {
-            drapingManager.OnLinenHoverEnter(slotIndex, linenObj);
-        }
     }
 
     private void OnTriggerStay(Collider other)
@@ -40,10 +35,11 @@ public class DrapingZoneTrigger : MonoBehaviour
         if (drapingManager == null) drapingManager = FindFirstObjectByType<MotherDrapingManager>();
         if (drapingManager == null || !drapingManager.isDrapingActive) return;
 
+        if (slotIndex < 0 || slotIndex >= drapingManager.drapeSlots.Count) return;
+        if (drapingManager.drapeSlots[slotIndex].isDraped) return;
+
         GameObject linenObj = GetLinenObject(other);
         if (linenObj == null) return;
-
-        drapingManager.OnLinenHoverStay(slotIndex, linenObj);
 
         var twoHand = linenObj.GetComponent<TwoHandedLinenCloth>()
                    ?? linenObj.GetComponentInParent<TwoHandedLinenCloth>()
@@ -51,9 +47,6 @@ public class DrapingZoneTrigger : MonoBehaviour
 
         bool isHeldWithTwo = twoHand != null && twoHand.IsHeldWithTwoHands();
         bool isUnheld = twoHand != null && !twoHand.IsBeingHeld();
-
-        if (slotIndex < 0 || slotIndex >= drapingManager.drapeSlots.Count) return;
-        if (drapingManager.drapeSlots[slotIndex].isDraped) return;
 
         // Place on this zone if held with two hands for >= 0.35s or released inside the zone
         if (isHeldWithTwo)
@@ -75,14 +68,6 @@ public class DrapingZoneTrigger : MonoBehaviour
     private void OnTriggerExit(Collider other)
     {
         dwellTimer = 0f;
-        if (drapingManager == null) drapingManager = FindFirstObjectByType<MotherDrapingManager>();
-        if (drapingManager == null) return;
-
-        GameObject linenObj = GetLinenObject(other);
-        if (linenObj != null)
-        {
-            drapingManager.OnLinenHoverExit(slotIndex, linenObj);
-        }
     }
 
     private GameObject GetLinenObject(Collider col)

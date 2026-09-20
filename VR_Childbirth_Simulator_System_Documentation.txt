@@ -1,0 +1,336 @@
+====================================================================================================
+VR CHILDBIRTH SIMULATOR - COMPLETE SYSTEM ARCHITECTURE & CLINICAL PROTOCOL DOCUMENTATION
+====================================================================================================
+Author: DeepMind Antigravity AI & Medical Simulation Team
+Project: VR Childbirth Simulator (Unity VR / Meta Quest / OpenXR)
+Date: September 2026
+Version: 2.0 (8-Step Clinical Simulation Sequence)
+====================================================================================================
+
+TABLE OF CONTENTS:
+----------------------------------------------------------------------------------------------------
+1. SYSTEM OVERVIEW & CLINICAL OBJECTIVES
+2. CORE ARCHITECTURE & STATE MACHINE
+3. THE 8-STEP CLINICAL SIMULATION SEQUENCE (DETAILED BREAKDOWN)
+4. SCORING ENGINE & MISTAKE EVALUATION SYSTEM
+5. INTERACTIVE HARDWARE & VR SUBSYSTEMS
+6. COMPLETE CODEBASE INVENTORY (ALL 29 ACTIVE SCRIPTS)
+7. RULE-BASED VALIDATION VS. DECISION MATRIX EXPLANATION
+8. LOCAL DATA PERSISTENCE & RECORD STORAGE
+====================================================================================================
+
+
+====================================================================================================
+1. SYSTEM OVERVIEW & CLINICAL OBJECTIVES
+====================================================================================================
+The VR Childbirth Simulator is an immersive, high-fidelity medical training application designed to
+train and evaluate nursing and medical students on the aseptic preparation and sterile draping
+protocol prior to vaginal delivery.
+
+Key Educational Goals:
+1. Patient Communication: Establishing rapport and securing informed consent.
+2. Aseptic Technique: Correct execution of the 9-ball perineal scrub and antiseptic paint without
+   cross-contamination.
+3. Fluid Management: Smooth preliminary cleansing and antiseptic rinsing using a water pitcher.
+4. Sterile Field Maintenance: Strict two-handed unfolding and sequential placement of sterile drapes
+   with automatic sterile glove transitioning.
+5. Instrument Hygiene & Safety: Zero contamination of instruments with proximity-based tray returns
+   and proper disposal of bio-hazardous cotton.
+
+
+====================================================================================================
+2. CORE ARCHITECTURE & STATE MACHINE
+====================================================================================================
+The simulation is driven by two synchronized, event-driven state machines:
+
+A. VRDemoGameManager (Master Simulation Controller)
+   - File: Assets/Scripts/VRDemoGameManager.cs
+   - Manages the overall simulation lifecycle (Steps 1 through 8).
+   - Centralizes player score calculation, mistake logging, penalty enforcement, and JSON serialization.
+   - Dispatches OnSimulationPhaseChanged events across all scene observers.
+
+B. PerinealCareManager (Clinical Procedure State Controller)
+   - File: Assets/Scripts/PerinealCareManager.cs
+   - Handles the physical patient environment, HUD transitions, and procedural triggers.
+   - Synchronizes UI components (FloatingPokeDialogueUI, CleaningProgressUI, StrokeGuideUI, DrapingGuideUI).
+
+Enum Definitions:
+----------------------------------------------------------------------------------------------------
+SimulationPhase / PerinealCareState:
+  - STEP_1_TALK_TO_MOTHER          (Step 1: Patient Informed Consent)
+  - STEP_2_PRELIMINARY_WATER_WASH  (Step 2: Preliminary Perineal Wash 0-100%)
+  - STEP_3_IODINE_7_5_SCRUB        (Step 3: 7.5% Povidone-Iodine 9-Ball Technique)
+  - STEP_4_ANTISEPTIC_RINSE        (Step 4: Water Rinse of Antiseptic 0-100%)
+  - STEP_5_IODINE_10_PAINT         (Step 5: 10% Povidone-Iodine Surgical Paint)
+  - STEP_6_STERILE_DRAPING         (Step 6: 4-Zone Sterile Draping with Blue Gloves)
+  - STEP_7_SETUP_TABLE             (Step 7: Mayo Table Setup - Modular Placeholder)
+  - STEP_8_FINAL_SUMMARY           (Step 8: Final Score & Mistakes Summary Evaluation)
+
+
+====================================================================================================
+3. THE 8-STEP CLINICAL SIMULATION SEQUENCE (DETAILED BREAKDOWN)
+====================================================================================================
+
+----------------------------------------------------------------------------------------------------
+STEP 1: TALK TO MOTHER / INFORMED CONSENT
+----------------------------------------------------------------------------------------------------
+- UI: FloatingPokeDialogueUI attached to DialogueCanvas bedside.
+- Behavior:
+  * On simulation launch, a floating prompt appears: "Talk to the Mother".
+  * Poking the button displays dialogue choices for explaining the procedure to the mother.
+  * Mother responds with gentle voice/text acknowledgments.
+- Scoring Rules:
+  * Optimal choices: 0 penalty.
+  * Non-optimal/abrupt choices: Deducts penalty points (e.g. -5 pts) and logs communication mistake.
+- Completion: Upon finishing dialogue, automatically advances to Step 2.
+
+----------------------------------------------------------------------------------------------------
+STEP 2: PRELIMINARY WATER WASH
+----------------------------------------------------------------------------------------------------
+- UI: CleaningProgressUI displays "Step 2: Preliminary Water Wash" with a continuous 0% -> 100% bar.
+- Behavior:
+  * Player picks up the water pitcher from Table 3.
+  * Tilting the pitcher beyond 45 degrees emits water particles (PitcherPour.cs).
+  * Spherecast downward checks if water stream intersects mother perineal anatomy.
+  * While pouring on target, progress smoothly fills from 0% to 100%.
+- Scoring Rules:
+  * Dropping pitcher on floor/bed: -5 pts penalty + safety snapback.
+- Completion: When progress reaches 100%, automatically advances to Step 3.
+
+----------------------------------------------------------------------------------------------------
+STEP 3: 7.5% POVIDONE-IODINE SCRUB (9-BALL TECHNIQUE)
+----------------------------------------------------------------------------------------------------
+- UI: StrokeGuideUI appears overhead tracking Strokes 1 through 9.
+- Behavior:
+  * Player picks up Pickup Forceps & Handling Forceps.
+  * Pickup Forceps grabs a cotton ball from the 7.5% Iodine Jar.
+  * Cotton is transferred from Pickup Forceps to Handling Forceps.
+  * 3D blue box guides (StrokeAreaVisualGuide.cs) appear on active landmarks ONLY when holding
+    handling forceps equipped with cotton.
+  * 9 Anatomical Landmarks in order:
+    1. Mons Pubis (Right to Left)
+    2. Right Labium Majus (Top to Bottom)
+    3. Left Labium Majus (Top to Bottom)
+    4. Right Labium Minus (Top to Bottom)
+    5. Left Labium Minus (Top to Bottom)
+    6. Right Inner Thigh / Groin
+    7. Left Inner Thigh / Groin
+    8. Perineum to Fourchette
+    9. Anus (Direct Dab/Pat dwell >= 0.35s)
+  * Completing a stroke leaves a washable translucent LIGHT GREEN puddle (WashableIodinePuddle.cs).
+  * 1-Cotton-Per-Stroke Rule: Cotton ball is spent (isUsed = true) immediately upon stroke completion.
+    Player must discard it into the waste basin and grab a fresh cotton ball.
+  * Completed zones turn light green and are IGNORED (they will not flash red or re-trigger mistakes).
+- Scoring Rules:
+  * Out-of-order stroke on uncompleted zone: Flashes glowing RED, logs mistake, deducts -5 pts.
+  * Dropping cotton or forceps on floor: Deducts -5 pts.
+- Completion: Upon completing Stroke 9, automatically advances to Step 4.
+
+----------------------------------------------------------------------------------------------------
+STEP 4: ANTISEPTIC RINSE
+----------------------------------------------------------------------------------------------------
+- UI: CleaningProgressUI displays "Step 4: Antiseptic Rinse" with a 0% -> 100% progress bar.
+- Behavior:
+  * Player tilts the water pitcher to pour clean water over the 9 light-green puddles.
+  * As water hits each puddle, its opacity fades smoothly to 0 (WashableIodinePuddle.WashWithWater).
+  * Progress bar dynamically calculates remaining cleanliness across all 9 puddles.
+- Scoring Rules:
+  * Dropping pitcher on floor: -5 pts.
+- Completion: When all light green puddles reach 100% washed, automatically advances to Step 5.
+
+----------------------------------------------------------------------------------------------------
+STEP 5: 10% POVIDONE-IODINE SURGICAL PAINT
+----------------------------------------------------------------------------------------------------
+- UI: StrokeGuideUI displays "Step 5: 10% Povidone-Iodine Antiseptic Paint (Surgical Prep)".
+- Behavior:
+  * Player uses Pickup Forceps to grab cotton from the 10% Iodine Jar, transfers to Handling Forceps.
+  * Player performs the 9-stroke surgical painting sequence.
+  * Each completed stroke activates a PERSISTENT DARK AMBER COATING (WashableIodinePuddle.Apply10Coating)
+    that remains permanently on the patient for surgical delivery.
+- Scoring Rules:
+  * Out-of-order stroke: -5 pts + Red Flash.
+  * Dropping tools/cotton: -5 pts.
+- Completion: Upon completing Stroke 9, automatically advances to Step 6.
+
+----------------------------------------------------------------------------------------------------
+STEP 6: STERILE DRAPING
+----------------------------------------------------------------------------------------------------
+- Hand Visuals: Player hands automatically equip sterile blue surgical gloves (PlayerHandMaterialManager.cs).
+- UI: DrapingGuideUI displays "Step 6: Sterile Draping of the Mother" with a 4-step progress tracker.
+- Behavior:
+  * MotherDrapingManager activates 4 static soft blue holographic guides on the patient:
+    Zone 1: Under Buttocks
+    Zone 2: Abdomen / Lower Suprapubic
+    Zone 3: Left Thigh & Leg
+    Zone 4: Right Thigh & Leg
+  * Two-Handed Grab Rule: Player must pick up and unfold the dry linen from Table 1 using BOTH hands.
+    Attempting to place with one hand displays a warning and rejects placement.
+  * Correct placement: Replaces the blue guide with a permanent green drape mesh, plays a chime,
+    and automatically spawns fresh linen at Table 1.
+  * Wrong placement (out-of-sequence): Flashes glowing RED, plays error sound, deducts -5 pts,
+    and returns linen to Table 1.
+- Completion: When all 4 drapes are placed, automatically advances to Step 7.
+
+----------------------------------------------------------------------------------------------------
+STEP 7: SETUP TABLE (MAYO PREP PLACEHOLDER)
+----------------------------------------------------------------------------------------------------
+- UI: Floating prompt on DialogueCanvas: "Step 7: Setup Table (Mayo Prep) - Tap to Proceed".
+- Behavior:
+  * Modular placeholder step designed for future Mayo table instrument arrangement logic.
+  * Tapping the button validates the step and advances to Step 8.
+
+----------------------------------------------------------------------------------------------------
+STEP 8: FINAL SUMMARY & MISTAKE EVALUATION UI
+----------------------------------------------------------------------------------------------------
+- UI: FloatingPokeDialogueUI renders the comprehensive Clinical Evaluation Card:
+  1. Header: "CLINICAL EVALUATION SUMMARY"
+  2. Final Score: Displays calculated score out of 100 with grade:
+     - 85% to 100%: PASS (EXCELLENT)
+     - 70% to 84%:  PASS
+     - Below 70%:   NEEDS PRACTICE
+  3. Mistake Breakdown:
+     - If mistakes made: Lists every individual violation and points lost.
+       (e.g., "• Step 3: Dropped cotton on floor/unsterile surface (-5 pts)")
+       (e.g., "• Step 6: Out of order Draping Order Violation (-5 pts)")
+     - If 0 mistakes made: "✓ Flawless Procedure! Zero sterile violations recorded."
+  4. Restart Button: VR Poke-enabled "Restart Simulation" button reloads the Unity scene to pristine state.
+- Storage: Automatically writes a timestamped JSON file to persistent storage.
+
+
+====================================================================================================
+4. SCORING ENGINE & MISTAKE EVALUATION SYSTEM
+====================================================================================================
+
+Formula:
+  Final Score = Mathf.Clamp(100 - Total Deductions, 0, 100)
+
+Deduction Matrix (Standard Rule-Based Values):
+----------------------------------------------------------------------------------------------------
+Violation Type                                    | Penalty | Remediation / System Action
+--------------------------------------------------+---------+---------------------------------------
+Dropped Tool on Floor / Unsterile Bed             | -5 pts  | 1.2s safety timer -> Teleport to Table
+Dropped Cotton Ball outside Waste Basin           | -5 pts  | 1.8s timer -> Log contamination
+Wrong 9-Ball Stroke Sequence (Uncompleted Zone)   | -5 pts  | Glow Red for 1.25s -> Block advancement
+Wrong Draping Sequence (Out of Order)             | -5 pts  | Glow Red -> Linen reset to Table 1
+Non-Optimal Communication Choice (Step 1)         | -5 pts  | Patient expresses concern/nervousness
+Using Spent / Dirty Cotton Ball for a new stroke  | Warning | Blocked until fresh cotton is held
+One-Handed Draping Attempt                        | Warning | Blocked until held with two hands
+Safe Tool Return to Table Socket (Proximity Snap) | 0 pts   | Ghost preview -> Kinematic snap lock
+Safe Cotton Disposal into Bedside Waste Basin     | 0 pts   | Cotton destroyed with safe audio chime
+
+
+====================================================================================================
+5. INTERACTIVE HARDWARE & VR SUBSYSTEMS
+====================================================================================================
+
+1. Proximity Snap Return Sockets (ToolReturnSocket.cs & ToolItem.cs):
+   - Every instrument has a home socket on Table 1 (and Table 2 when placed).
+   - Proximity Detection: Bringing a tool within 20cm of its slot shows a soft blue ghost preview.
+   - Releasing the tool inside the radius snaps it in place kinematically with 0 penalty.
+
+2. Two-Handed Linen Interaction (TwoHandedLinenCloth.cs):
+   - Dedicated Left and Right attach points dynamically routed to the player's controllers.
+   - Multi-grab selection tracks whether both hands are holding the cloth.
+   - If dropped in mid-air or dropped below 0.25m, auto-returns to Table 1 cleanly.
+
+3. Forceps & Cotton Lifecycle (ForcepsController.cs & CottonState.cs):
+   - Pickup Forceps: Hovering inside the cotton jar and holding the Primary Button spawns soaked cotton.
+   - Handling Forceps: Bringing forceps tips within 5cm while holding the Primary Button transfers cotton.
+   - Letting go of Primary Button releases cotton grip.
+
+4. Modular Temporary Waste Basin (WasteBasin.cs):
+   - Located at bedside / Table 2: Temporary_WasteBasin (Position: 0.35, 0.85, 2.10).
+   - Trigger box catches discarded cotton and deletes it with 0 penalty.
+   - Modular visualMeshSlot property allows dragging any custom 3D trashbin asset into the Inspector.
+
+5. Dynamic Hand Glove Swapping (PlayerHandMaterialManager.cs):
+   - Switches hand renderers between normal skin material and blue sterile surgical gloves during Step 6.
+
+
+====================================================================================================
+6. COMPLETE CODEBASE INVENTORY (ALL 29 ACTIVE SCRIPTS)
+====================================================================================================
+
+Simulation & State Management:
+1. VRDemoGameManager.cs          - Master manager, 8-step orchestrator, scoring engine & JSON save.
+2. PerinealCareManager.cs        - Procedural state machine for Steps 1 through 8.
+3. DialogueScenario.cs          - ScriptableObject data container for dialogue nodes and choices.
+
+User Interface & HUDs:
+4. FloatingPokeDialogueUI.cs     - VR poke dialogue canvas for Step 1, Step 7, and Step 8 Summary.
+5. CleaningProgressUI.cs         - Continuous 0-100% progress bar for Step 2 Wash & Step 4 Rinse.
+6. StrokeGuideUI.cs              - Floating 9-node progress banner for 9-ball scrub & paint.
+7. DrapingGuideUI.cs             - Floating 4-node progress banner for sterile draping.
+8. LazyFollowHUD.cs              - Smooth billboarding and head-following for VR UI canvases.
+
+Perineal Scrub & Fluid Simulation:
+9.  StrokeTrackingManager.cs     - 9-ball landmark validation, stroke distance & dwell tracking.
+10. StrokeAreaVisualGuide.cs     - 3D translucent blue box guides appearing on active zones.
+11. WashableIodinePuddle.cs      - Washable light-green puddles (Step 3) & permanent amber layer (Step 5).
+12. PitcherPour.cs               - Water particle emission and spherecast surface washing.
+13. StrokeZoneDefinition.cs      - Anatomical zone ScriptableObject definitions.
+14. StrokeZoneTrigger.cs         - BoxCollider triggers on mother body landmarks.
+
+Sterile Draping:
+15. MotherDrapingManager.cs      - 4-zone draping coordinator with red/green visual guides.
+16. TwoHandedLinenCloth.cs       - Dual grab attach points, two-handed validation & Table 1 reset.
+17. DrapingZoneTrigger.cs        - Trigger colliders on mother buttocks, abdomen, and thighs.
+18. PlayerHandMaterialManager.cs - Equips blue sterile surgical gloves on player hands.
+
+Tools, Forceps & Waste:
+19. ToolItem.cs                  - Tool physics, table kinematic locking, proximity snap & drop penalty.
+20. ToolReturnSocket.cs          - Table socket with 20cm ghost preview and kinematic snap locking.
+21. ForcepsController.cs         - Pickup & Handling forceps controller with button grip & cotton transfer.
+22. Forcepsrole.cs               - Enum definition (Pickup, Handling).
+23. CottonState.cs               - Cotton antiseptic state, used flag, holder tracking, floor drop penalty.
+24. CottonJarZone.cs             - Spawns soaked cotton when pickup forceps enters jar.
+25. WasteBasin.cs                - Bedside waste container catching cotton safely with 0 penalty.
+
+VR & Editor Helpers:
+26. AnimateHandOnInput.cs        - Drives VR controller finger animations.
+27. XRPlayerSpawnAligner.cs      - Centers XR Origin position on start.
+28. PosedMeshColliderBaker.cs    - Bakes mesh colliders onto deformed mother model.
+29. StrokeZoneGizmoVisualizer.cs - Scene view gizmo visualizer for development.
+
+
+====================================================================================================
+7. RULE-BASED VALIDATION VS. DECISION MATRIX EXPLANATION
+====================================================================================================
+
+What is currently implemented:
+Your system is currently a PURE RULE-BASED VALIDATION ENGINE.
+- Every check is directly computed through deterministic clinical rules in C# code.
+- Advantages: Extremely fast, zero lookup overhead, robust, no missing data asset dependencies.
+
+What a Decision Matrix would add (Optional Future Expansion):
+A Decision Matrix is a data-driven table: [Step Index] x [Action/Tool] -> [Penalty, Warning, Severity].
+- If you ever wish to allow non-programmers or clinical educators to edit penalty weights or
+  custom warning texts via a Unity Inspector table without touching C# code, a Decision Matrix
+  ScriptableObject can be layered on top of VRDemoGameManager.
+
+
+====================================================================================================
+8. LOCAL DATA PERSISTENCE & RECORD STORAGE
+====================================================================================================
+At the end of Step 8, the simulation compiles a SimulationRecord object and writes it as a formatted
+JSON file to Unity's Application.persistentDataPath:
+
+File Format: SimulationRecord_YYYYMMDD_HHMMSS.json
+Location on Windows:
+C:\Users\<User>\AppData\LocalLow\<CompanyName>\<ProjectName>\SimulationRecord_*.json
+
+Sample Output:
+{
+    "playerName": "Nurse_Trainee_01",
+    "dateCompleted": "2026-09-20 16:45:00",
+    "finalScore": 85,
+    "mistakesMade": [
+        "Step 3: Dropped Cotton on floor/unsterile surface (-5 pts)",
+        "Step 6: Out of order Draping Order Violation (-5 pts)",
+        "Step 1: Improper communication with patient (-5 pts)"
+    ]
+}
+
+====================================================================================================
+END OF DOCUMENTATION
+====================================================================================================

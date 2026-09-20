@@ -23,11 +23,11 @@ public class PlayerHandMaterialManager : MonoBehaviour
     public Material gloveMaterial;
 
     [Header("Notification HUD Settings")]
-    [Tooltip("Distance from headset where the notification floats.")]
-    public float hudDistance = 0.75f;
+    [Tooltip("Distance from headset where the notification floats (close-range in-your-face).")]
+    public float hudDistance = 0.48f;
 
     [Tooltip("Vertical height offset relative to headset eye level.")]
-    public float hudHeightOffset = -0.05f;
+    public float hudHeightOffset = -0.02f;
 
     [Tooltip("Duration in seconds the notification stays visible.")]
     public float notificationDuration = 3.5f;
@@ -135,6 +135,7 @@ public class PlayerHandMaterialManager : MonoBehaviour
         if (notificationCoroutine != null)
         {
             StopCoroutine(notificationCoroutine);
+            notificationCoroutine = null;
         }
 
         notificationCoroutine = StartCoroutine(NotificationRoutine(title, subtitle));
