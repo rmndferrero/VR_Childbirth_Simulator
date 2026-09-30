@@ -3,7 +3,8 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Manages the 9-ball perineal scrub/paint technique in sequence (Strokes 1 through 9).
-/// Enforces 1 cotton per stroke, automatic advancement, and instant mistake detection with red visual alerts.
+/// Enforces 1 cotton per stroke, automatic advancement, pure 3D slider line-segment touch/progress tracking,
+/// instant tap for anus, wrong-way detection (bottom-to-top wiping prevention), and in-world red slider alerts.
 /// </summary>
 public class StrokeTrackingManager : MonoBehaviour
 {
@@ -13,8 +14,8 @@ public class StrokeTrackingManager : MonoBehaviour
     [Tooltip("All 9 zone definitions listed in clinical order.")]
     public List<StrokeZoneDefinition> allZonesInOrder = new List<StrokeZoneDefinition>();
 
-    [Header("Zone Trigger Components")]
-    public List<StrokeZoneTrigger> zoneTriggers = new List<StrokeZoneTrigger>();
+    [Header("Scene Stroke Sliders")]
+    public StrokeSliderTrack[] sliderTracks = new StrokeSliderTrack[9];
 
     [Header("State")]
     public int currentStrokeIndex = 0;
@@ -22,72 +23,65 @@ public class StrokeTrackingManager : MonoBehaviour
     private readonly HashSet<int> completedIndices = new HashSet<int>();
 
     [Header("Stroke Tuning")]
-    [Tooltip("Distance (in meters) the cotton must travel across the active zone to validate a stroke (~2.6cm).")]
-    public float requiredStrokeDistance = 0.026f;
+    [Tooltip("Required progress percentage along the top-to-bottom stroke slider to complete (0.85 = 85%).")]
+    public float requiredProgressThreshold = 0.85f;
 
-    [Tooltip("Dwell time (in seconds) required for dab strokes like Zone 9 (Anus).")]
-    public float requiredDabTime = 0.35f;
+    [Tooltip("Detection radius (meters) around the slider path line on the skin (~4.5cm).")]
+    public float sliderTouchRadius = 0.045f;
 
-    private float currentStrokeTravel = 0f;
-    private float currentDabTime = 0f;
-    private int consecutiveMoveSamples = 0;
+    [Tooltip("Tap detection radius (meters) for Stroke 9 Anus (~4.0cm).")]
+    public float tapTouchRadius = 0.040f;
+
+    [Tooltip("Time (seconds) without touch before a halfway stroke resets back to start (0%).")]
+    public float strokeAbandonmentTimeout = 1.0f;
+
+    [Header("Mistake Lockout & Red Feedback Duration")]
+    [Tooltip("Duration in seconds that all stroke interactions and progression are completely blocked while the red error animation plays.")]
+    public float mistakeLockoutDuration = 1.25f;
+
+    public bool IsMistakeLockoutActive => (Time.time - lastMistakeTriggerTime) < mistakeLockoutDuration;
+
+    private float currentStrokeProgress = 0f;
     private Vector3 lastTouchPos = Vector3.zero;
-    private float lastMistakeTriggerTime = 0f;
-    private float lastUsedCottonWarningTime = 0f;
-    private CottonState[] cachedCottons;
+    private float lastMistakeTriggerTime = -99f;
+    private float lastUsedCottonWarningTime = -99f;
+    private float lastActiveTouchTime = -99f;
 
     public event System.Action<int, StrokeZoneDefinition> OnStrokeAdvanced;
     public event System.Action<string, bool> OnStrokeValidated;
     public event System.Action<int> OnMistakeZoneTriggered;
+    public event System.Action<int, float, Vector3> OnStrokeProgressUpdated; // (zoneIndex, progress 0-1, handleWorldPos)
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
-        CacheZoneTriggers();
+        CacheSliderTracks();
     }
 
     private void Start()
     {
-        if (zoneTriggers == null || zoneTriggers.Count == 0)
+        if (sliderTracks == null || sliderTracks.Length == 0 || sliderTracks[0] == null)
         {
-            CacheZoneTriggers();
+            CacheSliderTracks();
         }
     }
 
     private void OnEnable()
     {
-        if (zoneTriggers == null || zoneTriggers.Count == 0)
+        if (sliderTracks == null || sliderTracks.Length == 0 || sliderTracks[0] == null)
         {
-            CacheZoneTriggers();
+            CacheSliderTracks();
         }
     }
 
-    public void CacheZoneTriggers()
+    public void CacheSliderTracks()
     {
-        var foundTriggers = FindObjectsByType<StrokeZoneTrigger>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        
-        var triggerList = new List<StrokeZoneTrigger>(foundTriggers);
-        triggerList.Sort((a, b) => {
-            int orderA = (a != null && a.zoneDefinition != null) ? a.zoneDefinition.expectedOrderIndex : 99;
-            int orderB = (b != null && b.zoneDefinition != null) ? b.zoneDefinition.expectedOrderIndex : 99;
-            return orderA.CompareTo(orderB);
-        });
+        var foundSliders = FindObjectsByType<StrokeSliderTrack>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var list = new List<StrokeSliderTrack>(foundSliders);
+        list.Sort((a, b) => a.strokeIndex.CompareTo(b.strokeIndex));
+        sliderTracks = list.ToArray();
 
-        zoneTriggers = triggerList;
-
-        if (allZonesInOrder == null || allZonesInOrder.Count == 0)
-        {
-            allZonesInOrder = new List<StrokeZoneDefinition>();
-            foreach (var trig in zoneTriggers)
-            {
-                if (trig != null && trig.zoneDefinition != null)
-                {
-                    allZonesInOrder.Add(trig.zoneDefinition);
-                }
-            }
-        }
-
-        Debug.Log($"[StrokeTrackingManager] Cached {zoneTriggers.Count} stroke zone triggers.");
+        Debug.Log($"[StrokeTrackingManager] Cached {sliderTracks.Length} scene-based stroke sliders.");
     }
 
     public void ResetForPhase(AntisepticType phaseAntiseptic)
@@ -95,11 +89,24 @@ public class StrokeTrackingManager : MonoBehaviour
         currentPhaseAntiseptic = phaseAntiseptic;
         currentStrokeIndex = 0;
         completedIndices.Clear();
-        currentStrokeTravel = 0f;
-        currentDabTime = 0f;
+        currentStrokeProgress = 0f;
         lastTouchPos = Vector3.zero;
+        lastMistakeTriggerTime = -99f;
+        lastUsedCottonWarningTime = -99f;
+        lastActiveTouchTime = -99f;
 
-        CacheZoneTriggers();
+        CacheSliderTracks();
+
+        if (sliderTracks != null)
+        {
+            foreach (var track in sliderTracks)
+            {
+                if (track != null && track.puddleLayer != null)
+                {
+                    track.puddleLayer.ResetPuddles();
+                }
+            }
+        }
 
         Debug.Log($"[StrokeTrackingManager] Phase Reset: {phaseAntiseptic} | Starting Stroke 1 of 9.");
 
@@ -121,27 +128,54 @@ public class StrokeTrackingManager : MonoBehaviour
         return currentStrokeIndex;
     }
 
-    public StrokeZoneTrigger GetActiveZoneTrigger()
+    /// <summary>
+    /// Gets the top (start/anterior) and bottom (end/posterior) endpoints of any zone directly from the scene slider.
+    /// </summary>
+    public void GetZoneEndpoints(int zoneIndex, out Vector3 startPoint, out Vector3 endPoint)
     {
-        if (zoneTriggers == null || zoneTriggers.Count == 0) CacheZoneTriggers();
+        if (sliderTracks == null || sliderTracks.Length == 0) CacheSliderTracks();
 
-        if (zoneTriggers != null && currentStrokeIndex >= 0 && currentStrokeIndex < zoneTriggers.Count)
+        if (sliderTracks != null && zoneIndex >= 0 && zoneIndex < sliderTracks.Length && sliderTracks[zoneIndex] != null)
         {
-            return zoneTriggers[currentStrokeIndex];
+            startPoint = sliderTracks[zoneIndex].GetStartWorldPosition();
+            endPoint = sliderTracks[zoneIndex].GetEndWorldPosition();
+            return;
         }
-        return null;
+
+        startPoint = Vector3.zero;
+        endPoint = Vector3.down * 0.05f;
     }
 
     private void Update()
     {
-        // Zero-allocation check: only check active cottons that are currently held by forceps or hand
+        // Abandonment check: if a stroke was started (> 1% progress) but player stopped touching for > strokeAbandonmentTimeout (1.0s), smoothly reset to 0%
+        if (currentStrokeProgress > 0.01f && currentStrokeIndex < 9)
+        {
+            if (Time.time - lastActiveTouchTime > strokeAbandonmentTimeout)
+            {
+                currentStrokeProgress = 0f;
+                lastTouchPos = Vector3.zero;
+                GetZoneEndpoints(currentStrokeIndex, out Vector3 startPt, out _);
+                OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 0f, startPt);
+
+                if (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
+                {
+                    var activeTrack = sliderTracks[currentStrokeIndex];
+                    if (activeTrack != null)
+                    {
+                        activeTrack.ResetProgress();
+                    }
+                }
+            }
+        }
+
+        // Zero-allocation check: only check active cottons that are currently held
         if (CottonState.activeCottons == null || CottonState.activeCottons.Count == 0) return;
 
         foreach (var cotton in CottonState.activeCottons)
         {
             if (cotton == null || !cotton.gameObject.activeInHierarchy) continue;
 
-            // Only evaluate positions for cotton balls that are actively held or manipulated
             if (cotton.currentHolder != null)
             {
                 int zoneIdx = GetZoneIndexForPoint(cotton.transform.position);
@@ -154,83 +188,92 @@ public class StrokeTrackingManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Identifies which zone index (0 to 8) a touch point belongs to, or -1 if outside any zone.
-    /// Uses exact local-space Oriented Bounding Box (OBB) math.
+    /// Identifies which zone index (0 to 8) a touch point belongs to using pure 3D slider line-segment math.
+    /// Finds the closest zone slider to the cotton ball. If within sliderTouchRadius, returns that zone index.
     /// </summary>
     public int GetZoneIndexForPoint(Vector3 worldPoint)
     {
-        if (zoneTriggers == null || zoneTriggers.Count == 0) CacheZoneTriggers();
+        if (sliderTracks == null || sliderTracks.Length == 0) CacheSliderTracks();
 
-        // 1. Check active zone first
-        var activeTrig = GetActiveZoneTrigger();
-        if (activeTrig != null)
+        int bestIndex = -1;
+        float bestDistSq = float.MaxValue;
+        float maxRadius = sliderTouchRadius; // 4.5cm
+
+        for (int i = 0; i < sliderTracks.Length; i++)
         {
-            BoxCollider activeBox = activeTrig.GetComponent<BoxCollider>();
-            if (activeBox != null && IsPointInBox(activeBox, worldPoint, 0.015f))
+            var track = sliderTracks[i];
+            if (track == null) continue;
+
+            float radius = track.isTapOnly ? tapTouchRadius : maxRadius;
+            float distSq = GetDistanceSqToTrack(worldPoint, track, out float t);
+
+            if (distSq <= radius * radius && (track.isTapOnly || (t >= -0.20f && t <= 1.20f)))
             {
-                return currentStrokeIndex;
+                if (distSq < bestDistSq)
+                {
+                    bestDistSq = distSq;
+                    bestIndex = i;
+                }
             }
         }
 
-        // 2. Check all other zones
-        for (int i = 0; i < zoneTriggers.Count; i++)
-        {
-            var trig = zoneTriggers[i];
-            if (trig == null) continue;
+        return bestIndex;
+    }
 
-            BoxCollider box = trig.GetComponent<BoxCollider>();
-            if (box != null && IsPointInBox(box, worldPoint, 0.015f))
-            {
-                return i;
-            }
+    private float GetDistanceSqToTrack(Vector3 worldPoint, StrokeSliderTrack track, out float t)
+    {
+        if (track == null)
+        {
+            t = 0f;
+            return float.MaxValue;
         }
 
-        return -1;
-    }
+        Vector3 startPos = track.GetStartWorldPosition();
 
-    private bool IsPointInBox(BoxCollider box, Vector3 worldPoint, float tolerance = 0.015f)
-    {
-        if (box == null) return false;
-        Vector3 localPoint = box.transform.InverseTransformPoint(worldPoint) - box.center;
-        Vector3 halfSize = box.size * 0.5f + Vector3.one * tolerance;
-        return Mathf.Abs(localPoint.x) <= halfSize.x &&
-               Mathf.Abs(localPoint.y) <= halfSize.y &&
-               Mathf.Abs(localPoint.z) <= halfSize.z;
-    }
+        if (track.isTapOnly)
+        {
+            t = 0f;
+            return (worldPoint - startPos).sqrMagnitude;
+        }
 
-    public void OnCottonEnterZone(CottonState cotton, StrokeZoneDefinition zone, Vector3 pos)
-    {
-        int zoneIdx = GetZoneIndexFromDefinition(zone);
-        ProcessCottonTouch(cotton, zoneIdx, pos);
-    }
-
-    public void OnCottonStayInZone(CottonState cotton, StrokeZoneDefinition zone, Vector3 pos)
-    {
-        int zoneIdx = GetZoneIndexFromDefinition(zone);
-        ProcessCottonTouch(cotton, zoneIdx, pos);
-    }
-
-    public void OnCottonExitZone(CottonState cotton, StrokeZoneDefinition zone)
-    {
-        lastTouchPos = Vector3.zero;
-        currentStrokeTravel = 0f;
-        currentDabTime = 0f;
-        consecutiveMoveSamples = 0;
-    }
-
-    private int GetZoneIndexFromDefinition(StrokeZoneDefinition zone)
-    {
-        if (zone != null) return zone.expectedOrderIndex;
-        return -1;
+        Vector3 endPos = track.GetEndWorldPosition();
+        return DistanceToSegmentSq(worldPoint, startPos, endPos, out t);
     }
 
     /// <summary>
-    /// Core logic for handling a cotton ball touching a stroke zone.
+    /// Computes squared shortest distance from point P to line segment [A, B] and normalized projection parameter t.
+    /// </summary>
+    public static float DistanceToSegmentSq(Vector3 p, Vector3 a, Vector3 b, out float t)
+    {
+        Vector3 ab = b - a;
+        float lenSq = ab.sqrMagnitude;
+        if (lenSq < 0.000001f)
+        {
+            t = 0f;
+            return (p - a).sqrMagnitude;
+        }
+
+        t = Vector3.Dot(p - a, ab) / lenSq;
+        float clampedT = Mathf.Clamp01(t);
+        Vector3 closestPt = a + clampedT * ab;
+        return (p - closestPt).sqrMagnitude;
+    }
+
+    /// <summary>
+    /// Core logic for handling a cotton ball touching a stroke zone with real-time 1D slider tracking.
+    /// Requires strokes to begin at the Start Point (top) and move towards End Point (bottom).
+    /// Touching End Point first or wiping upward triggers mistake feedback.
     /// </summary>
     public void ProcessCottonTouch(CottonState cotton, int touchedZoneIndex, Vector3 touchPos)
     {
         if (cotton == null) return;
         if (touchedZoneIndex < 0 || touchedZoneIndex >= 9) return;
+
+        // MISTAKE LOCKOUT: Block all stroke interactions, swipe progression, and completion while the red error animation is playing!
+        if (IsMistakeLockoutActive)
+        {
+            return;
+        }
 
         // Auto-soak fail-safe if cotton is not soaked
         if (!cotton.isSoaked)
@@ -258,45 +301,81 @@ public class StrokeTrackingManager : MonoBehaviour
         {
             if (completedIndices.Contains(currentStrokeIndex)) return;
 
-            if (lastTouchPos == Vector3.zero)
+            lastActiveTouchTime = Time.time;
+
+            // ---------------------------------------------------------------------
+            // Stroke 9: Anus (Instant Tap / Contact Validation on Anus Target)
+            // ---------------------------------------------------------------------
+            if (currentStrokeIndex == 8)
             {
-                lastTouchPos = touchPos;
-                currentDabTime = 0f;
-                currentStrokeTravel = 0f;
-                consecutiveMoveSamples = 0;
+                OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, touchPos);
+                CompleteCurrentStroke(cotton);
                 return;
             }
 
-            float delta = Vector3.Distance(touchPos, lastTouchPos);
-            lastTouchPos = touchPos;
+            // ---------------------------------------------------------------------
+            // Strokes 1 to 8: 1D Real-Time Top-to-Bottom Slider Tracking
+            // ---------------------------------------------------------------------
+            GetZoneEndpoints(currentStrokeIndex, out Vector3 startPoint, out Vector3 endPoint);
+            Vector3 strokeVec = endPoint - startPoint;
+            float lenSq = strokeVec.sqrMagnitude;
 
-            // Zone 9: Anus (Direct Dab / Pat - requires steady contact dwell)
-            if (currentStrokeIndex == 8)
+            if (lenSq < 0.0001f)
             {
-                currentDabTime += Time.deltaTime;
-                if (currentDabTime >= requiredDabTime)
+                OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, touchPos);
+                CompleteCurrentStroke(cotton);
+                return;
+            }
+
+            // Project touch position onto stroke vector (0 = Top / Start, 1 = Bottom / End)
+            float rawT = Vector3.Dot(touchPos - startPoint, strokeVec) / lenSq;
+            float clampedT = Mathf.Clamp01(rawT);
+
+            // 1. Fresh Stroke Initiation:
+            if (currentStrokeProgress <= 0.01f)
+            {
+                // Player touches near Start Point / Top half (t <= 0.45) -> Initialize downward wipe!
+                if (rawT <= 0.45f)
                 {
-                    CompleteCurrentStroke(cotton);
+                    currentStrokeProgress = Mathf.Max(0.05f, clampedT);
+                    Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
+                    OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
+                }
+                // If player touches near End Point / Bottom (t >= 0.60) before starting at top -> Wrong direction attempt!
+                else if (rawT >= 0.60f)
+                {
+                    HandleMistakeTouch(touchPos, currentStrokeIndex, "Incorrect technique! Wipe downward from top to bottom only.");
                 }
             }
-            // Zones 1-8: Swipes (Requires continuous movement travel across the zone)
+            // 2. Stroke In Progress:
             else
             {
-                if (delta > 0.0006f && delta < 0.15f)
+                // Advancing downward towards End Point
+                if (clampedT > currentStrokeProgress)
                 {
-                    currentStrokeTravel += delta;
-                    consecutiveMoveSamples++;
-                }
+                    currentStrokeProgress = clampedT;
+                    Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
+                    OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
 
-                // Strict Stroke Requirement: must achieve required travel distance and multiple movement samples
-                if (currentStrokeTravel >= requiredStrokeDistance && consecutiveMoveSamples >= 3)
+                    // Validate completion if bottom threshold reached
+                    if (currentStrokeProgress >= requiredProgressThreshold)
+                    {
+                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, endPoint);
+                        CompleteCurrentStroke(cotton);
+                        return;
+                    }
+                }
+                // Reverse upward wiping check
+                else if (clampedT < currentStrokeProgress - 0.28f)
                 {
-                    CompleteCurrentStroke(cotton);
+                    HandleMistakeTouch(touchPos, currentStrokeIndex, "Wipe downward from top to bottom only!");
                 }
             }
+
+            lastTouchPos = touchPos;
         }
         // =========================================================================
-        // WRONG / OUT-OF-ORDER ZONE TOUCH: Flash Red Error
+        // WRONG / OUT-OF-ORDER ZONE TOUCH: Flash Red Error on touched slider
         // =========================================================================
         else
         {
@@ -306,11 +385,7 @@ public class StrokeTrackingManager : MonoBehaviour
                 return;
             }
 
-            if (Time.time - lastMistakeTriggerTime > 0.85f)
-            {
-                lastMistakeTriggerTime = Time.time;
-                HandleMistakeTouch(touchPos, touchedZoneIndex, "Out of order! Take the correct anatomical stroke in sequence.");
-            }
+            HandleMistakeTouch(touchPos, touchedZoneIndex, "Out of order! Take the correct anatomical stroke in sequence.");
         }
     }
 
@@ -322,10 +397,22 @@ public class StrokeTrackingManager : MonoBehaviour
             return;
         }
 
+        // Lock out all interactions for the duration of the red animation
+        lastMistakeTriggerTime = Time.time;
         lastTouchPos = Vector3.zero;
-        currentStrokeTravel = 0f;
-        currentDabTime = 0f;
-        consecutiveMoveSamples = 0;
+        currentStrokeProgress = 0f;
+
+        // Immediately reset any visual fill/bead progress on active slider
+        if (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
+        {
+            var activeTrack = sliderTracks[currentStrokeIndex];
+            if (activeTrack != null)
+            {
+                activeTrack.ResetProgress();
+            }
+        }
+        GetZoneEndpoints(currentStrokeIndex, out Vector3 startPt, out _);
+        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 0f, startPt);
 
         if (mistakeZoneIndex >= 0)
         {
@@ -353,22 +440,18 @@ public class StrokeTrackingManager : MonoBehaviour
         OnStrokeValidated?.Invoke($"{zoneName} Completed!", true);
 
         // Apply Antiseptic Visual Layer (Light Blue Puddle in 7.5% Scrub / Persistent Amber in 10% Paint)
-        if (zoneTriggers != null && finishedIndex >= 0 && finishedIndex < zoneTriggers.Count)
+        if (sliderTracks != null && finishedIndex >= 0 && finishedIndex < sliderTracks.Length)
         {
-            var trig = zoneTriggers[finishedIndex];
-            if (trig != null)
+            var track = sliderTracks[finishedIndex];
+            if (track != null && track.puddleLayer != null)
             {
-                var puddle = trig.GetComponent<WashableIodinePuddle>();
-                if (puddle != null)
+                if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
                 {
-                    if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
-                    {
-                        puddle.Apply7_5Puddle();
-                    }
-                    else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
-                    {
-                        puddle.Apply10Coating();
-                    }
+                    track.puddleLayer.Apply7_5Puddle();
+                }
+                else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
+                {
+                    track.puddleLayer.Apply10Coating();
                 }
             }
         }
@@ -381,9 +464,7 @@ public class StrokeTrackingManager : MonoBehaviour
 
         // Advance to next stroke
         currentStrokeIndex++;
-        currentStrokeTravel = 0f;
-        currentDabTime = 0f;
-        consecutiveMoveSamples = 0;
+        currentStrokeProgress = 0f;
         lastTouchPos = Vector3.zero;
 
         var nextDef = GetCurrentActiveZone();
@@ -408,7 +489,3 @@ public class StrokeTrackingManager : MonoBehaviour
         }
     }
 }
-
-
-
-

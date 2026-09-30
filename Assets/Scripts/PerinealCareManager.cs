@@ -214,8 +214,12 @@ public class PerinealCareManager : MonoBehaviour
                 if (cleaningProgressUI != null) cleaningProgressUI.Hide();
                 if (strokeGuideUI != null) strokeGuideUI.Hide();
                 if (drapingGuideUI != null) drapingGuideUI.Hide();
-                if (floatingDialogueUI != null) floatingDialogueUI.ShowSetupTablePrompt();
-                Debug.Log("[PerinealCareManager] Step 7: Setup Table (Mayo Prep Placeholder).");
+                if (floatingDialogueUI != null) floatingDialogueUI.Hide();
+                if (TablePrepManager.Instance != null)
+                {
+                    TablePrepManager.Instance.StartTablePrepPhase();
+                }
+                Debug.Log("[PerinealCareManager] Step 7: Setup Table (Mayo Prep) - 5 tool placement slots active on Table 2.");
                 break;
 
             case PerinealCareState.STATE_8_FINAL_SUMMARY:

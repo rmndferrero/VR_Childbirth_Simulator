@@ -22,6 +22,7 @@ public class WashableIodinePuddle : MonoBehaviour
     private Renderer puddleRenderer;
     private DecalProjector puddleDecal;
     private Material instantiatedMat;
+    private Vector3 initialPuddleScale = Vector3.one;
 
     private void Awake()
     {
@@ -32,12 +33,24 @@ public class WashableIodinePuddle : MonoBehaviour
     {
         if (puddle75Object != null)
         {
+            if (puddle75Object.transform.localScale.sqrMagnitude > 0.00001f)
+            {
+                initialPuddleScale = puddle75Object.transform.localScale;
+            }
+
             puddleRenderer = puddle75Object.GetComponent<Renderer>();
             puddleDecal = puddle75Object.GetComponent<DecalProjector>();
 
-            if (puddleRenderer != null && puddleRenderer.material != null)
+            if (puddleRenderer != null)
             {
-                instantiatedMat = puddleRenderer.material;
+                if (Application.isPlaying)
+                {
+                    instantiatedMat = puddleRenderer.material;
+                }
+                else
+                {
+                    instantiatedMat = puddleRenderer.sharedMaterial;
+                }
             }
         }
     }
@@ -50,6 +63,10 @@ public class WashableIodinePuddle : MonoBehaviour
         CacheRenderers();
         if (puddle75Object != null)
         {
+            if (initialPuddleScale != Vector3.zero)
+            {
+                puddle75Object.transform.localScale = initialPuddleScale;
+            }
             puddle75Object.SetActive(true);
             currentOpacity = 1.0f;
             isPuddleActive = true;
@@ -87,12 +104,19 @@ public class WashableIodinePuddle : MonoBehaviour
         currentOpacity = Mathf.Max(0f, currentOpacity);
         UpdatePuddleOpacity(currentOpacity);
 
-        if (currentOpacity <= 0.04f)
+        if (currentOpacity <= 0.02f)
         {
             isFullyWashed = true;
             isPuddleActive = false;
             currentOpacity = 0f;
-            if (puddle75Object != null) puddle75Object.SetActive(false);
+            if (puddle75Object != null)
+            {
+                puddle75Object.SetActive(false);
+                if (initialPuddleScale != Vector3.zero)
+                {
+                    puddle75Object.transform.localScale = initialPuddleScale;
+                }
+            }
             Debug.Log($"[WashableIodinePuddle] {gameObject.name} light-green puddle fully washed away by water.");
         }
     }
@@ -125,6 +149,11 @@ public class WashableIodinePuddle : MonoBehaviour
                 instantiatedMat.color = c;
             }
         }
+
+        if (puddle75Object != null && initialPuddleScale != Vector3.zero)
+        {
+            puddle75Object.transform.localScale = initialPuddleScale * Mathf.Lerp(0.15f, 1.0f, alpha);
+        }
     }
 
     public void ResetPuddles()
@@ -132,7 +161,14 @@ public class WashableIodinePuddle : MonoBehaviour
         isPuddleActive = false;
         isFullyWashed = false;
         currentOpacity = 1.0f;
-        if (puddle75Object != null) puddle75Object.SetActive(false);
+        if (puddle75Object != null)
+        {
+            puddle75Object.SetActive(false);
+            if (initialPuddleScale != Vector3.zero)
+            {
+                puddle75Object.transform.localScale = initialPuddleScale;
+            }
+        }
         if (coating10Object != null) coating10Object.SetActive(false);
     }
 }

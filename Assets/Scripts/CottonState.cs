@@ -57,6 +57,16 @@ public class CottonState : MonoBehaviour
         }
     }
 
+    void OnDestroy()
+    {
+        activeCottons.Remove(this);
+        if (dropCo != null)
+        {
+            StopCoroutine(dropCo);
+            dropCo = null;
+        }
+    }
+
     // Central place to change/log who's holding this cotton, so every transfer
     // (pickup from jar, steal between forceps, drop) is tracked consistently.
     public void SetHolder(ForcepsRole? newHolder)

@@ -122,15 +122,11 @@ public class StrokeGuideUI : MonoBehaviour
             {
                 if (strokeIndex == 8)
                 {
-                    directionInstructionText.text = "Technique: <color=#FCD34D><b>Direct Dab / Pat</b></color> (Steady contact dwell on Anus)";
-                }
-                else if (strokeIndex == 1)
-                {
-                    directionInstructionText.text = "Technique: <color=#38BDF8><b>Horizontal swipe</b></color> (Lateral pass across Mons Pubis)";
+                    directionInstructionText.text = "Technique: <color=#FCD34D><b>Direct Tap</b></color> (Tap contact on Anus)";
                 }
                 else
                 {
-                    directionInstructionText.text = "Technique: <color=#38BDF8><b>Downward stroke</b></color> (Continuous swipe clean to dirty)";
+                    directionInstructionText.text = "Technique: <color=#38BDF8><b>Downward Slider</b></color> (Slide cotton top to bottom along track)";
                 }
             }
         }

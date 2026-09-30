@@ -1,31 +1,45 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering.Universal;
 
 /// <summary>
-/// Controls 3D visual collider box guides across the 9 stroke landmarks.
-/// - Active Target Zone: Automatically illuminates as a translucent Glowing Blue Collider Box ONLY when cotton is held in the Handling Forceps.
-/// - No numbers or words: Pure translucent 3D visual collider boxes with gentle breathing pulse.
-/// - Out-of-Order Mistake: Collider box instantly switches to Glowing Neon Red and flashes for 1.25s.
-/// - Inactive / No Cotton in Handling Forceps: All collider boxes remain completely hidden.
+/// Controls the 9 scene-based 3D On-Skin Stroke Sliders during gameplay.
+/// When holding the handling forceps with cotton:
+/// - Active Stroke: Highlighted in Glowing Sky Blue with live handle bead, fill line, and direction arrow.
+/// - Upcoming Strokes: Clean, subtle roadmap tracks showing where future strokes will be placed.
+/// - Completed Strokes: Slider guides hide completely, leaving only the applied betadine on the mother's skin!
+/// - Mistake Out-of-Order Touch: The touched slider flashes Glowing Neon Red for 1.25s.
+/// When not holding forceps + cotton: All slider guides hide to keep the view clean (applied betadine remains visible).
 /// </summary>
 public class StrokeAreaVisualGuide : MonoBehaviour
 {
-    [Header("Visual Collider Materials")]
+    [Header("Sliders Parent / Collection")]
+    [Tooltip("The parent GameObject containing all 9 StrokeSliderTrack children.")]
+    public Transform slidersParent;
+    public StrokeSliderTrack[] sliders = new StrokeSliderTrack[9];
+
+    [Header("Visual Materials")]
     public Material activeBoxMaterial;
+    public Material upcomingBoxMaterial;
+    public Material completedBoxMaterial;
     public Material mistakeBoxMaterial;
 
     [Header("Handling Forceps Reference")]
     [Tooltip("Reference to the Handling Forceps. Auto-cached if null.")]
     public ForcepsController handlingForceps;
 
+    [Header("Blind Test / Examination Mode")]
+    [Tooltip("When true, hides the 9-ball stroke guide lines and nodes during normal wiping so the user must identify the anatomical zones from memory. Keeps 100% full stroke tracking logic active, and ONLY flashes Glowing Neon Red when a mistake occurs!")]
+    public bool hideGuidesUnlessError = true;
+
+    [Header("Hint Configuration")]
+    [Tooltip("Number of mistakes on the current active stroke before triggering the bright glowing blue visual hint.")]
+    public int mistakesRequiredForHint = 3;
+
     private StrokeTrackingManager trackingManager;
-    private List<GameObject> zoneVisualBoxes = new List<GameObject>();
-    private List<MeshRenderer> zoneBoxRenderers = new List<MeshRenderer>();
-    private List<DecalProjector> zoneProjectors = new List<DecalProjector>();
     private int currentActiveIndex = 0;
     private int currentMistakeIndex = -1;
     private float mistakeFlashTimer = 0f;
+    private int activeStrokeMistakeCount = 0;
 
     private void Awake()
     {
@@ -34,24 +48,25 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         {
             trackingManager.OnStrokeAdvanced += HandleStrokeAdvanced;
             trackingManager.OnMistakeZoneTriggered += HandleMistakeZoneTriggered;
+            trackingManager.OnStrokeProgressUpdated += HandleStrokeProgressUpdated;
         }
 
         LoadMaterialsIfNull();
         CacheHandlingForceps();
-        SetupZoneVisuals();
+        CacheSliders();
     }
 
     private void Start()
     {
         CacheHandlingForceps();
-        SetupZoneVisuals();
+        CacheSliders();
         RefreshActiveZoneDisplay();
     }
 
     private void OnEnable()
     {
         CacheHandlingForceps();
-        SetupZoneVisuals();
+        CacheSliders();
         RefreshActiveZoneDisplay();
     }
 
@@ -61,6 +76,42 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         {
             trackingManager.OnStrokeAdvanced -= HandleStrokeAdvanced;
             trackingManager.OnMistakeZoneTriggered -= HandleMistakeZoneTriggered;
+            trackingManager.OnStrokeProgressUpdated -= HandleStrokeProgressUpdated;
+        }
+    }
+
+    public void CacheSliders()
+    {
+        if (slidersParent == null)
+        {
+            var found = GameObject.Find("Perineal_Stroke_Sliders");
+            if (found != null) slidersParent = found.transform;
+        }
+
+        if (slidersParent != null)
+        {
+            var foundSliders = slidersParent.GetComponentsInChildren<StrokeSliderTrack>(true);
+            var list = new List<StrokeSliderTrack>(foundSliders);
+            list.Sort((a, b) => a.strokeIndex.CompareTo(b.strokeIndex));
+            sliders = list.ToArray();
+        }
+        else
+        {
+            var foundSliders = FindObjectsByType<StrokeSliderTrack>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var list = new List<StrokeSliderTrack>(foundSliders);
+            list.Sort((a, b) => a.strokeIndex.CompareTo(b.strokeIndex));
+            sliders = list.ToArray();
+        }
+
+        foreach (var s in sliders)
+        {
+            if (s != null)
+            {
+                if (s.activeMaterial == null) s.activeMaterial = activeBoxMaterial;
+                if (s.upcomingMaterial == null) s.upcomingMaterial = upcomingBoxMaterial;
+                if (s.completedMaterial == null) s.completedMaterial = completedBoxMaterial;
+                if (s.mistakeMaterial == null) s.mistakeMaterial = mistakeBoxMaterial;
+            }
         }
     }
 
@@ -89,6 +140,22 @@ public class StrokeAreaVisualGuide : MonoBehaviour
 #endif
         }
 
+        if (upcomingBoxMaterial == null)
+        {
+#if UNITY_EDITOR
+            upcomingBoxMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Inactive_Mat.mat");
+            if (upcomingBoxMaterial == null) upcomingBoxMaterial = activeBoxMaterial;
+#endif
+        }
+
+        if (completedBoxMaterial == null)
+        {
+#if UNITY_EDITOR
+            completedBoxMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/GREEN GLOW.mat");
+            if (completedBoxMaterial == null) completedBoxMaterial = upcomingBoxMaterial;
+#endif
+        }
+
         if (mistakeBoxMaterial == null)
         {
 #if UNITY_EDITOR
@@ -97,88 +164,24 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         }
     }
 
-    public void SetupZoneVisuals()
+    private void HandleStrokeAdvanced(int strokeIndex, StrokeZoneDefinition activeZone)
     {
-        zoneVisualBoxes.Clear();
-        zoneBoxRenderers.Clear();
-        zoneProjectors.Clear();
+        currentActiveIndex = strokeIndex;
+        activeStrokeMistakeCount = 0; // Reset mistake counter for the new stroke
+        mistakeFlashTimer = 0f;
+        currentMistakeIndex = -1;
 
-        var triggers = FindObjectsByType<StrokeZoneTrigger>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        var triggerList = new List<StrokeZoneTrigger>(triggers);
-
-        // Strictly sort by expected order index (0 to 8: Stroke 1 to 9)
-        triggerList.Sort((a, b) => {
-            int orderA = (a != null && a.zoneDefinition != null) ? a.zoneDefinition.expectedOrderIndex : 99;
-            int orderB = (b != null && b.zoneDefinition != null) ? b.zoneDefinition.expectedOrderIndex : 99;
-            return orderA.CompareTo(orderB);
-        });
-
-        foreach (var trig in triggerList)
+        if (sliders != null)
         {
-            if (trig == null) continue;
-
-            BoxCollider box = trig.GetComponent<BoxCollider>();
-            Vector3 colliderSize = box != null ? box.size : new Vector3(0.04f, 0.08f, 0.04f);
-            Vector3 colliderCenter = box != null ? box.center : Vector3.zero;
-
-            // 1. Locate or create clean 3D Visual Collider Box (Cube Mesh without collider)
-            string boxName = $"VisualColliderBox_{trig.gameObject.name}";
-            Transform boxT = trig.transform.Find(boxName);
-            GameObject boxGo = null;
-
-            if (boxT != null)
+            foreach (var s in sliders)
             {
-                boxGo = boxT.gameObject;
-            }
-            else
-            {
-                boxGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                boxGo.name = boxName;
-                boxGo.transform.SetParent(trig.transform, false);
-
-                // Strip any default collider from the visual primitive
-                var defaultCol = boxGo.GetComponent<Collider>();
-                if (defaultCol != null) DestroyImmediate(defaultCol);
-            }
-
-            boxGo.transform.localPosition = colliderCenter;
-            boxGo.transform.localRotation = Quaternion.identity;
-            boxGo.transform.localScale = colliderSize;
-
-            var mr = boxGo.GetComponent<MeshRenderer>();
-            if (mr != null)
-            {
-                mr.material = activeBoxMaterial;
-                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                mr.receiveShadows = false;
-            }
-
-            boxGo.SetActive(false);
-            zoneVisualBoxes.Add(boxGo);
-            zoneBoxRenderers.Add(mr);
-
-            // 2. Also align any decal projector if present
-            string projName = $"DecalGuide_{trig.gameObject.name}";
-            Transform projT = trig.transform.Find(projName);
-            if (projT != null)
-            {
-                var proj = projT.GetComponent<DecalProjector>();
-                if (proj != null)
+                if (s != null)
                 {
-                    proj.enabled = false;
-                    zoneProjectors.Add(proj);
+                    s.ResetProgress();
                 }
             }
         }
 
-        Debug.Log($"[StrokeAreaVisualGuide] Initialized {zoneVisualBoxes.Count} pure 3D Blue Collider visual guides.");
-    }
-
-    private void HandleStrokeAdvanced(int strokeIndex, StrokeZoneDefinition activeZone)
-    {
-        currentActiveIndex = strokeIndex;
-        mistakeFlashTimer = 0f;
-        currentMistakeIndex = -1;
         RefreshActiveZoneDisplay();
     }
 
@@ -189,8 +192,36 @@ public class StrokeAreaVisualGuide : MonoBehaviour
             return;
         }
 
+        activeStrokeMistakeCount++;
         currentMistakeIndex = mistakeIndex;
-        mistakeFlashTimer = 1.25f; // Glow red for 1.25s
+        mistakeFlashTimer = (trackingManager != null) ? trackingManager.mistakeLockoutDuration : 1.25f;
+
+        if (sliders != null && mistakeIndex >= 0 && mistakeIndex < sliders.Length)
+        {
+            var slider = sliders[mistakeIndex];
+            if (slider != null)
+            {
+                slider.gameObject.SetActive(true);
+                slider.SetVisualState(SliderVisualState.Mistake, true);
+            }
+        }
+
+        if (activeStrokeMistakeCount >= mistakesRequiredForHint)
+        {
+            Debug.Log($"[StrokeAreaVisualGuide] Hint Triggered on Stroke {currentActiveIndex + 1}! ({activeStrokeMistakeCount} mistakes made). Illuminating active stroke in bright glowing blue.");
+        }
+    }
+
+    private void HandleStrokeProgressUpdated(int strokeIndex, float progress, Vector3 handlePos)
+    {
+        if (strokeIndex == currentActiveIndex && sliders != null && strokeIndex >= 0 && strokeIndex < sliders.Length)
+        {
+            var slider = sliders[strokeIndex];
+            if (slider != null)
+            {
+                slider.UpdateProgress(progress, handlePos);
+            }
+        }
     }
 
     private void RefreshActiveZoneDisplay()
@@ -201,9 +232,6 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Checks if a fresh, usable cotton ball is currently held in the Handling Forceps.
-    /// </summary>
     public bool IsCottonInHandlingForceps()
     {
         if (handlingForceps == null) CacheHandlingForceps();
@@ -229,6 +257,8 @@ public class StrokeAreaVisualGuide : MonoBehaviour
 
     private void Update()
     {
+        if (!Application.isPlaying) return;
+
         if (mistakeFlashTimer > 0f)
         {
             mistakeFlashTimer -= Time.deltaTime;
@@ -241,53 +271,80 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         UpdateVisuals();
     }
 
+    /// <summary>
+    /// Updates all 9 sliders:
+    /// - Test Mode (hideGuidesUnlessError = true): Guides are invisible during normal play, but if an error/mistake occurs,
+    ///   the mistaken zone immediately flashes in Glowing Neon Red so the student/tester sees where they made an error.
+    /// - Guided Mode (hideGuidesUnlessError = false): Full roadmap lines, direction arrows, and active highlights are visible.
+    /// </summary>
     private void UpdateVisuals()
     {
+        if (sliders == null || sliders.Length == 0) return;
+
         bool isHoldingCotton = IsCottonInHandlingForceps();
         bool isMistakeActive = (mistakeFlashTimer > 0f && currentMistakeIndex >= 0);
+        bool isHintActive = (activeStrokeMistakeCount >= mistakesRequiredForHint);
 
-        for (int i = 0; i < zoneVisualBoxes.Count; i++)
+        for (int i = 0; i < sliders.Length; i++)
         {
-            var boxGo = zoneVisualBoxes[i];
-            var mr = zoneBoxRenderers[i];
-            if (boxGo == null || mr == null) continue;
+            var slider = sliders[i];
+            if (slider == null) continue;
 
-            // 1. MISTAKE FLASH: High-priority Glowing Red Collider Box
+            // 1. Mistake feedback: ALWAYS flash Glowing Neon Red on the mistake zone regardless of test mode!
             if (i == currentMistakeIndex && isMistakeActive)
             {
-                boxGo.SetActive(true);
-                if (mistakeBoxMaterial != null && mr.sharedMaterial != mistakeBoxMaterial)
-                {
-                    mr.sharedMaterial = mistakeBoxMaterial;
-                }
-
-                // Red pulse during mistake
-                float redPulse = 1.0f + Mathf.Sin(Time.time * 12f) * 0.08f;
-                var trig = boxGo.transform.parent;
-                var boxCol = trig != null ? trig.GetComponent<BoxCollider>() : null;
-                Vector3 baseSize = boxCol != null ? boxCol.size : Vector3.one * 0.05f;
-                boxGo.transform.localScale = baseSize * redPulse;
+                slider.gameObject.SetActive(true);
+                slider.SetVisualElementsVisible(true);
+                slider.SetVisualState(SliderVisualState.Mistake);
+                continue;
             }
-            // 2. UNCOMPLETED ZONES: Visible in static solid blue ONLY when holding handling forceps with cotton
-            else if (isHoldingCotton && i >= currentActiveIndex && currentActiveIndex < zoneVisualBoxes.Count)
+
+            // 2. Completed strokes: Slider guide goes away completely, leaving only the applied betadine on the skin
+            if (i < currentActiveIndex)
             {
-                boxGo.SetActive(true);
-                if (activeBoxMaterial != null && mr.sharedMaterial != activeBoxMaterial)
-                {
-                    mr.sharedMaterial = activeBoxMaterial;
-                }
-
-                var trig = boxGo.transform.parent;
-                var boxCol = trig != null ? trig.GetComponent<BoxCollider>() : null;
-                Vector3 baseSize = boxCol != null ? boxCol.size : Vector3.one * 0.05f;
-                boxGo.transform.localScale = baseSize; // Clean static size - NO BLUE PULSE
+                slider.SetVisualElementsVisible(false);
+                slider.gameObject.SetActive(false);
+                continue;
             }
-            // 3. COMPLETED ZONES OR NO COTTON HELD: Completely Hidden
+
+            // 3. Test Mode (Hide Guides Unless Error): Keep all roadmap lines and nodes completely invisible!
+            if (hideGuidesUnlessError)
+            {
+                slider.SetVisualElementsVisible(false);
+                slider.gameObject.SetActive(false);
+                continue;
+            }
+
+            // 4. Guided Mode: When forceps with cotton is held, show subtle roadmaps & hints
+            if (isHoldingCotton && currentActiveIndex < 9)
+            {
+                slider.gameObject.SetActive(true);
+                slider.SetVisualElementsVisible(true);
+
+                // Active target stroke with Hint active (after 3 mistakes): Glowing Sky Blue highlight
+                if (i == currentActiveIndex && isHintActive)
+                {
+                    slider.SetVisualState(SliderVisualState.Active);
+                }
+                // Default: All upcoming strokes look uniformly translucent blue (no hint)
+                else
+                {
+                    slider.SetVisualState(SliderVisualState.Upcoming);
+                }
+            }
             else
             {
-                boxGo.SetActive(false);
+                // Hide all slider guides when forceps with cotton is not held
+                slider.SetVisualElementsVisible(false);
+                slider.gameObject.SetActive(false);
             }
         }
     }
-}
 
+    [ContextMenu("Toggle Test Mode (Hide Guides Unless Error)")]
+    public void ToggleTestMode()
+    {
+        hideGuidesUnlessError = !hideGuidesUnlessError;
+        Debug.Log($"[StrokeAreaVisualGuide] Test Mode (Hide Guides Unless Error) is now: {(hideGuidesUnlessError ? "ENABLED (Invisible until error)" : "DISABLED (Guided)")}");
+    }
+}

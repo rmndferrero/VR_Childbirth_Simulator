@@ -23,6 +23,14 @@ public class ToolReturnSocket : MonoBehaviour
     public float proximityRadius = 0.22f; // ~22cm proximity detection
     public float snapRadius = 0.18f;      // ~18cm release snap radius
 
+    [Header("Manual Snap Orientation & Position Setup")]
+    [Tooltip("Position offset relative to snapTransform.")]
+    public Vector3 snapPositionOffset = Vector3.zero;
+    [Tooltip("Euler rotation in degrees applied to the tool on snap.")]
+    public Vector3 snapEulerAngles = Vector3.zero;
+    [Tooltip("If true, uses snapEulerAngles as absolute world rotation; if false, combines with snapTransform rotation.")]
+    public bool useAbsoluteSnapRotation = false;
+
     [Header("Visual Holographic Guide")]
     public GameObject blueGhostObject;
     public Material ghostMaterial;
@@ -52,6 +60,19 @@ public class ToolReturnSocket : MonoBehaviour
         HideGhost();
     }
 
+    public Vector3 GetTargetSnapPosition()
+    {
+        Transform root = snapTransform != null ? snapTransform : transform;
+        return root.position + root.TransformDirection(snapPositionOffset);
+    }
+
+    public Quaternion GetTargetSnapRotation()
+    {
+        if (useAbsoluteSnapRotation) return Quaternion.Euler(snapEulerAngles);
+        Transform root = snapTransform != null ? snapTransform : transform;
+        return root.rotation * Quaternion.Euler(snapEulerAngles);
+    }
+
     private void LoadGhostMaterialIfNull()
     {
         if (ghostMaterial == null)
@@ -71,12 +92,20 @@ public class ToolReturnSocket : MonoBehaviour
     {
         if (blueGhostObject != null || targetTool == null) return;
 
+        Transform root = snapTransform != null ? snapTransform : transform;
+        Transform existing = root.Find($"{targetTool.name}_ReturnGhost");
+        if (existing != null)
+        {
+            blueGhostObject = existing.gameObject;
+            return;
+        }
+
         LoadGhostMaterialIfNull();
 
         GameObject ghost = new GameObject($"{targetTool.name}_ReturnGhost");
-        ghost.transform.SetParent(snapTransform, false);
-        ghost.transform.localPosition = Vector3.zero;
-        ghost.transform.localRotation = Quaternion.identity;
+        ghost.transform.SetParent(root, false);
+        ghost.transform.localPosition = snapPositionOffset;
+        ghost.transform.localRotation = Quaternion.Euler(snapEulerAngles);
         ghost.transform.localScale = Vector3.one;
 
         // Clone mesh filters and renderers from the target tool
@@ -125,7 +154,8 @@ public class ToolReturnSocket : MonoBehaviour
         // Check if target tool is currently being held by the player
         if (targetTool.IsBeingHeld)
         {
-            float dist = Vector3.Distance(targetTool.transform.position, snapTransform.position);
+            Vector3 snapPos = GetTargetSnapPosition();
+            float dist = Vector3.Distance(targetTool.transform.position, snapPos);
             if (dist <= proximityRadius)
             {
                 if (!isToolInsideProximity)
@@ -166,7 +196,7 @@ public class ToolReturnSocket : MonoBehaviour
     }
 
     /// <summary>
-    /// Snaps and locks the tool into this return socket.
+    /// Snaps and locks the tool into this return socket with guaranteed scale preservation.
     /// </summary>
     public void SnapTool(ToolItem tool)
     {
@@ -175,21 +205,26 @@ public class ToolReturnSocket : MonoBehaviour
         HideGhost();
         isToolInsideProximity = false;
 
+        if (tool.InitialParent != null && tool.transform.parent != tool.InitialParent)
+        {
+            tool.transform.SetParent(tool.InitialParent, true);
+        }
+
+        Vector3 snapPos = GetTargetSnapPosition();
+        Quaternion snapRot = GetTargetSnapRotation();
+
+        tool.transform.position = snapPos;
+        tool.transform.rotation = snapRot;
+        tool.transform.localScale = tool.HomeScale;
+
         var rb = tool.GetComponent<Rigidbody>();
         if (rb != null)
         {
             rb.isKinematic = true;
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
-        }
-
-        tool.transform.position = snapTransform.position;
-        tool.transform.rotation = snapTransform.rotation;
-
-        if (rb != null)
-        {
-            rb.position = snapTransform.position;
-            rb.rotation = snapTransform.rotation;
+            rb.position = snapPos;
+            rb.rotation = snapRot;
         }
 
         Physics.SyncTransforms();
@@ -213,11 +248,53 @@ public class ToolReturnSocket : MonoBehaviour
         if (blueGhostObject != null) blueGhostObject.SetActive(false);
     }
 
+#if UNITY_EDITOR
+    [ContextMenu("Capture Target Tool Transform As Snap Settings")]
+    public void CaptureTargetToolTransform()
+    {
+        if (targetTool == null)
+        {
+            Debug.LogWarning("[ToolReturnSocket] Please assign a target ToolItem to capture its transform.");
+            return;
+        }
+
+        Transform root = snapTransform != null ? snapTransform : transform;
+        snapPositionOffset = root.InverseTransformPoint(targetTool.transform.position);
+        snapEulerAngles = (Quaternion.Inverse(root.rotation) * targetTool.transform.rotation).eulerAngles;
+        useAbsoluteSnapRotation = false;
+
+        UnityEditor.EditorUtility.SetDirty(this);
+        Debug.Log($"[ToolReturnSocket] Captured {targetTool.name}'s transform as snap settings! (Offset: {snapPositionOffset}, Angles: {snapEulerAngles})");
+    }
+
+    [ContextMenu("Preview Snap Position (Snap Tool in Editor)")]
+    public void PreviewSnapToolInEditor()
+    {
+        if (targetTool == null) return;
+
+        UnityEditor.Undo.RecordObject(targetTool.transform, $"Preview Snap for {name}");
+        targetTool.transform.position = GetTargetSnapPosition();
+        targetTool.transform.rotation = GetTargetSnapRotation();
+        targetTool.transform.localScale = targetTool.HomeScale;
+        UnityEditor.EditorUtility.SetDirty(targetTool.gameObject);
+        Debug.Log($"[ToolReturnSocket] Placed {targetTool.name} at snap position for visual preview.");
+    }
+#endif
+
     private void OnDrawGizmosSelected()
     {
+        Vector3 snapPos = GetTargetSnapPosition();
         Gizmos.color = new Color(0.2f, 0.7f, 1f, 0.4f);
-        Gizmos.DrawWireSphere(transform.position, proximityRadius);
+        Gizmos.DrawWireSphere(snapPos, proximityRadius);
         Gizmos.color = new Color(0.2f, 1f, 0.4f, 0.6f);
-        Gizmos.DrawWireSphere(transform.position, snapRadius);
+        Gizmos.DrawWireSphere(snapPos, snapRadius);
+
+        Quaternion snapRot = GetTargetSnapRotation();
+        Gizmos.color = Color.red;
+        Gizmos.DrawRay(snapPos, snapRot * Vector3.right * 0.05f);
+        Gizmos.color = Color.green;
+        Gizmos.DrawRay(snapPos, snapRot * Vector3.up * 0.05f);
+        Gizmos.color = Color.blue;
+        Gizmos.DrawRay(snapPos, snapRot * Vector3.forward * 0.08f);
     }
 }

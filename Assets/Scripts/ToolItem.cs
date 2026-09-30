@@ -10,6 +10,16 @@ public class ToolItem : MonoBehaviour
     [Header("Tool Configuration")]
     public string toolID;
 
+    [Header("Hand Grip Alignment (Surgical & Realistic)")]
+    [Tooltip("Dedicated transform where the player hand holds this tool.")]
+    public Transform handAttachPoint;
+    [Tooltip("Custom local offset for the hand grip position.")]
+    public Vector3 attachPositionOffset = Vector3.zero;
+    [Tooltip("Custom local Euler rotation for the hand grip (pointing forward from hand).")]
+    public Vector3 attachEulerAngles = Vector3.zero;
+    [Tooltip("If true, automatically computes the handle grip position for surgical scissors, forceps, clamps, and basins.")]
+    public bool autoAlignHandleGrip = true;
+
     private XRGrabInteractable grab;
     private Rigidbody rb;
 
@@ -22,6 +32,7 @@ public class ToolItem : MonoBehaviour
     private Vector3 homePos;
     private Quaternion homeRot;
     private Vector3 homeScale;
+    private Transform initialParent;
 
     // Table 2 locked position
     private Vector3 table2Pos;
@@ -72,12 +83,193 @@ public class ToolItem : MonoBehaviour
             savedColors[r] = cols;
         }
 
+        homeScale = transform.localScale;
+        initialParent = transform.parent;
+
+        var grabTransformers = GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Transformers.XRGeneralGrabTransformer>(true);
+        foreach (var gt in grabTransformers)
+        {
+            gt.allowOneHandedScaling = false;
+            gt.allowTwoHandedScaling = false;
+        }
+
+        EnsureInteractableAndAttachPoint();
+
         if (grab != null)
         {
+            grab.trackScale = false;
             grab.selectEntered.AddListener(OnGrabbed);
             grab.selectExited.AddListener(OnReleased);
         }
     }
+
+    public void EnsureInteractableAndAttachPoint()
+    {
+        if (grab == null)
+        {
+            grab = GetComponent<XRGrabInteractable>()
+                ?? GetComponentInParent<XRGrabInteractable>()
+                ?? GetComponentInChildren<XRGrabInteractable>();
+        }
+
+        if (grab != null)
+        {
+            // Ensure Player hand interaction layer (layer 2048) is enabled
+            grab.interactionLayers = grab.interactionLayers.value | 2048;
+
+            if (grab.interactionManager == null)
+            {
+                grab.interactionManager = FindAnyObjectByType<XRInteractionManager>();
+            }
+
+            // Auto-populate colliders if empty
+            if (grab.colliders == null || grab.colliders.Count == 0)
+            {
+                var cols = GetComponentsInChildren<Collider>(true);
+                foreach (var c in cols)
+                {
+                    if (c != null && !c.isTrigger) grab.colliders.Add(c);
+                }
+            }
+
+            grab.useDynamicAttach = false;
+            grab.matchAttachPosition = true;
+            grab.matchAttachRotation = true;
+            grab.attachEaseInTime = 0.12f;
+
+            SetupHandAttachPoint();
+        }
+    }
+
+    public void SetupHandAttachPoint()
+    {
+        if (handAttachPoint == null)
+        {
+            // Check for existing child attach points
+            Transform existing = transform.Find("AttachPoint") 
+                              ?? transform.Find("GrabAttachPoint") 
+                              ?? transform.Find("HandleGrabPoint");
+
+            if (existing != null)
+            {
+                handAttachPoint = existing;
+            }
+            else
+            {
+                GameObject apObj = new GameObject("AttachPoint");
+                apObj.transform.SetParent(transform, false);
+                handAttachPoint = apObj.transform;
+
+                if (autoAlignHandleGrip)
+                {
+                    AutoConfigureGripForToolType();
+                }
+                else
+                {
+                    handAttachPoint.localPosition = attachPositionOffset;
+                    handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
+                }
+            }
+        }
+
+        if (grab != null && handAttachPoint != null)
+        {
+            grab.attachTransform = handAttachPoint;
+        }
+    }
+
+    private void AutoConfigureGripForToolType()
+    {
+        if (handAttachPoint == null) return;
+
+        string nameLower = (gameObject.name + "_" + toolID).ToLower();
+
+        // Check if there is already a HandleGrabPoint on Pitcher or similar
+        Transform handlePoint = transform.Find("HandleGrabPoint");
+        if (handlePoint != null)
+        {
+            handAttachPoint.localPosition = handlePoint.localPosition;
+            handAttachPoint.localRotation = handlePoint.localRotation;
+            return;
+        }
+
+        // Calculate approximate local bounds
+        Bounds localBounds = new Bounds(Vector3.zero, Vector3.one * 0.1f);
+        var mf = GetComponentInChildren<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null)
+        {
+            localBounds = mf.sharedMesh.bounds;
+        }
+
+        if (nameLower.Contains("pitcher") || nameLower.Contains("flask"))
+        {
+            // Pitcher: grip at side handle wrapped naturally across the 4 fingers
+            attachPositionOffset = new Vector3(-0.0255f, 0.0195f, 0.0094f);
+            attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+        }
+        else if (nameLower.Contains("basin"))
+        {
+            // Kidney basin: grip at side rim
+            attachPositionOffset = new Vector3(0.0f, localBounds.max.y * 0.8f, localBounds.max.z * 0.6f);
+            attachEulerAngles = new Vector3(0.0f, 0.0f, 0.0f);
+        }
+        else if (nameLower.Contains("scissor") || nameLower.Contains("curette") || nameLower.Contains("clamp") || nameLower.Contains("needle") || nameLower.Contains("tongs"))
+        {
+            // Scissors, Clamps, Needle Holders: grip at the finger rings / back handle
+            Vector3 ext = localBounds.extents;
+            // Identify longest axis
+            if (ext.z >= ext.x && ext.z >= ext.y)
+            {
+                attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.35f);
+                attachEulerAngles = Vector3.zero;
+            }
+            else if (ext.y >= ext.x && ext.y >= ext.z)
+            {
+                attachPositionOffset = new Vector3(0.0f, localBounds.min.y + ext.y * 0.35f, 0.0f);
+                attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
+            }
+            else
+            {
+                attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.35f, 0.0f, 0.0f);
+                attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+            }
+        }
+        else if (nameLower.Contains("forcep"))
+        {
+            // Forceps (Pickup / Handling / Thumb): grip at middle-to-back knurled shaft
+            Vector3 ext = localBounds.extents;
+            if (ext.y >= ext.x && ext.y >= ext.z)
+            {
+                attachPositionOffset = new Vector3(0.0f, localBounds.min.y + ext.y * 0.5f, 0.0f);
+                attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
+            }
+            else if (ext.z >= ext.x && ext.z >= ext.y)
+            {
+                attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.5f);
+                attachEulerAngles = Vector3.zero;
+            }
+            else
+            {
+                attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.5f, 0.0f, 0.0f);
+                attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+            }
+        }
+        else if (nameLower.Contains("scalpel"))
+        {
+            // Scalpel: pencil grip along handle
+            Vector3 ext = localBounds.extents;
+            attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.45f);
+            attachEulerAngles = Vector3.zero;
+        }
+
+        handAttachPoint.localPosition = attachPositionOffset;
+        handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
+    }
+
+    public Vector3 HomeScale => homeScale;
+    public Vector3 HomePos => homePos;
+    public Quaternion HomeRot => homeRot;
+    public Transform InitialParent => initialParent;
 
     // Return sockets tracking
     private readonly List<ToolReturnSocket> nearbySockets = new List<ToolReturnSocket>();
@@ -91,6 +283,9 @@ public class ToolItem : MonoBehaviour
         homePos = transform.position;
         homeRot = transform.rotation;
         homeScale = transform.localScale;
+        initialParent = transform.parent;
+
+        EnsureInteractableAndAttachPoint();
 
         // Lock kinematic while resting on table so player physical collisions cannot push or knock over tools
         if (rb != null)
@@ -237,7 +432,17 @@ public class ToolItem : MonoBehaviour
     {
         if (isBeingRejected) return;
 
-        // Check if released within snap range of any nearby return socket (Option A)
+        // 1. Check if released near any Table 2 slot during Step 7 (Mayo Prep)
+        if (TablePrepManager.Instance != null && TablePrepManager.Instance.isTablePrepActive)
+        {
+            if (TablePrepManager.Instance.TryHandleToolRelease(this))
+            {
+                CancelDropTimer();
+                return;
+            }
+        }
+
+        // 2. Check if released within snap range of any nearby return socket (Option A)
         ToolReturnSocket bestSocket = null;
         float bestDist = float.MaxValue;
 
@@ -345,6 +550,8 @@ public class ToolItem : MonoBehaviour
             rb.isKinematic = true;
         }
 
+        transform.localScale = homeScale;
+
         // Re-enable grab in case a reject coroutine disabled it
         if (grab != null)
             grab.enabled = true;
@@ -451,6 +658,11 @@ public class ToolItem : MonoBehaviour
             rb.isKinematic = true;
         }
 
+        if (initialParent != null && transform.parent != initialParent)
+        {
+            transform.SetParent(initialParent, true);
+        }
+
         transform.position = homePos;
         transform.rotation = homeRot;
         transform.localScale = homeScale;
@@ -525,6 +737,142 @@ public class ToolItem : MonoBehaviour
                 }
                 tool.RestoreColors();
             }
+        }
+    }
+
+#if UNITY_EDITOR
+    [ContextMenu("Rebuild / Align Hand Attach Point")]
+    public void RebuildHandAttachPoint()
+    {
+        EnsureInteractableAndAttachPoint();
+        AutoConfigureGripForToolType();
+        UnityEditor.EditorUtility.SetDirty(this);
+        if (handAttachPoint != null) UnityEditor.EditorUtility.SetDirty(handAttachPoint.gameObject);
+        Debug.Log($"[ToolItem] Rebuilt hand attach point for {gameObject.name}: Offset = {attachPositionOffset}, Angles = {attachEulerAngles}");
+    }
+
+    [ContextMenu("Preset: Scissors / Clamps Grip")]
+    public void SetPresetScissors()
+    {
+        EnsureInteractableAndAttachPoint();
+        string nameLower = (gameObject.name + "_" + toolID).ToLower();
+        Bounds localBounds = new Bounds(Vector3.zero, Vector3.one * 0.1f);
+        var mf = GetComponentInChildren<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null) localBounds = mf.sharedMesh.bounds;
+        Vector3 ext = localBounds.extents;
+
+        if (ext.z >= ext.x && ext.z >= ext.y)
+        {
+            attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.35f);
+            attachEulerAngles = Vector3.zero;
+        }
+        else if (ext.y >= ext.x && ext.y >= ext.z)
+        {
+            attachPositionOffset = new Vector3(0.0f, localBounds.min.y + ext.y * 0.35f, 0.0f);
+            attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
+        }
+        else
+        {
+            attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.35f, 0.0f, 0.0f);
+            attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+        }
+
+        if (handAttachPoint != null)
+        {
+            handAttachPoint.localPosition = attachPositionOffset;
+            handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
+            UnityEditor.EditorUtility.SetDirty(handAttachPoint.gameObject);
+        }
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+
+    [ContextMenu("Preset: Forceps Grip")]
+    public void SetPresetForceps()
+    {
+        EnsureInteractableAndAttachPoint();
+        Bounds localBounds = new Bounds(Vector3.zero, Vector3.one * 0.1f);
+        var mf = GetComponentInChildren<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null) localBounds = mf.sharedMesh.bounds;
+        Vector3 ext = localBounds.extents;
+
+        if (ext.y >= ext.x && ext.y >= ext.z)
+        {
+            attachPositionOffset = new Vector3(0.0f, localBounds.min.y + ext.y * 0.5f, 0.0f);
+            attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
+        }
+        else if (ext.z >= ext.x && ext.z >= ext.y)
+        {
+            attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.5f);
+            attachEulerAngles = Vector3.zero;
+        }
+        else
+        {
+            attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.5f, 0.0f, 0.0f);
+            attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+        }
+
+        if (handAttachPoint != null)
+        {
+            handAttachPoint.localPosition = attachPositionOffset;
+            handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
+            UnityEditor.EditorUtility.SetDirty(handAttachPoint.gameObject);
+        }
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+
+    [ContextMenu("Preset: Basin Grip")]
+    public void SetPresetBasin()
+    {
+        EnsureInteractableAndAttachPoint();
+        Bounds localBounds = new Bounds(Vector3.zero, Vector3.one * 0.1f);
+        var mf = GetComponentInChildren<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null) localBounds = mf.sharedMesh.bounds;
+
+        attachPositionOffset = new Vector3(0.0f, localBounds.max.y * 0.8f, localBounds.max.z * 0.6f);
+        attachEulerAngles = Vector3.zero;
+
+        if (handAttachPoint != null)
+        {
+            handAttachPoint.localPosition = attachPositionOffset;
+            handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
+            UnityEditor.EditorUtility.SetDirty(handAttachPoint.gameObject);
+        }
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+
+    [ContextMenu("Preset: Pitcher Handle Grip")]
+    public void SetPresetPitcher()
+    {
+        EnsureInteractableAndAttachPoint();
+        attachPositionOffset = new Vector3(-0.0255f, 0.0195f, 0.0094f);
+        attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+
+        if (handAttachPoint != null)
+        {
+            handAttachPoint.localPosition = attachPositionOffset;
+            handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
+            UnityEditor.EditorUtility.SetDirty(handAttachPoint.gameObject);
+        }
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+#endif
+
+    private void OnDrawGizmosSelected()
+    {
+        if (handAttachPoint != null)
+        {
+            Gizmos.color = new Color(0.1f, 1f, 0.3f, 0.8f);
+            Gizmos.DrawWireSphere(handAttachPoint.position, 0.02f);
+            Gizmos.color = Color.red;
+            Gizmos.DrawRay(handAttachPoint.position, handAttachPoint.right * 0.04f);
+            Gizmos.color = Color.green;
+            Gizmos.DrawRay(handAttachPoint.position, handAttachPoint.up * 0.04f);
+            Gizmos.color = Color.blue;
+            Gizmos.DrawRay(handAttachPoint.position, handAttachPoint.forward * 0.06f);
+
+#if UNITY_EDITOR
+            UnityEditor.Handles.Label(handAttachPoint.position + Vector3.up * 0.03f, $"[Hand Grip: {gameObject.name}]");
+#endif
         }
     }
 }
