@@ -42,6 +42,9 @@ public class FloatingPokeDialogueUI : MonoBehaviour
     public TMP_Text summaryMistakesListText;
     public Button summaryRestartButton;
 
+    [Header("3-Slot Phrase Decision Matrix (Step 1)")]
+    public PhraseDecisionMatrix phraseDecisionMatrix;
+
     [Header("Audio & Feedback")]
     public AudioSource audioSource;
     public AudioClip pokeClickSound;
@@ -77,6 +80,7 @@ public class FloatingPokeDialogueUI : MonoBehaviour
         if (dialogueOptionsContainer != null) dialogueOptionsContainer.SetActive(false);
         if (responseContainer != null) responseContainer.SetActive(false);
         if (summaryContainer != null) summaryContainer.SetActive(false);
+        if (phraseDecisionMatrix != null) phraseDecisionMatrix.gameObject.SetActive(false);
 
         if (promptButtonText != null)
         {
@@ -125,6 +129,16 @@ public class FloatingPokeDialogueUI : MonoBehaviour
 
     public void ShowSummaryEvaluation(int finalScore, List<string> mistakes)
     {
+        if (SummaryScreenController.Instance != null)
+        {
+            if (promptContainer != null) promptContainer.SetActive(false);
+            if (dialogueOptionsContainer != null) dialogueOptionsContainer.SetActive(false);
+            if (responseContainer != null) responseContainer.SetActive(false);
+            if (phraseDecisionMatrix != null) phraseDecisionMatrix.gameObject.SetActive(false);
+            SummaryScreenController.Instance.OpenSummaryScreen();
+            return;
+        }
+
         if (rootCanvasObject != null) rootCanvasObject.SetActive(true);
         if (promptContainer != null) promptContainer.SetActive(false);
         if (dialogueOptionsContainer != null) dialogueOptionsContainer.SetActive(false);
@@ -298,6 +312,15 @@ public class FloatingPokeDialogueUI : MonoBehaviour
             {
                 PerinealCareManager.Instance.OnSetupTableCompleted();
             }
+            return;
+        }
+
+        if (phraseDecisionMatrix != null && (VRDemoGameManager.Instance == null || VRDemoGameManager.Instance.currentSimulationPhase == SimulationPhase.STEP_1_TALK_TO_MOTHER))
+        {
+            if (promptContainer != null) promptContainer.SetActive(false);
+            if (responseContainer != null) responseContainer.SetActive(false);
+            if (dialogueOptionsContainer != null) dialogueOptionsContainer.SetActive(false);
+            phraseDecisionMatrix.gameObject.SetActive(true);
             return;
         }
 

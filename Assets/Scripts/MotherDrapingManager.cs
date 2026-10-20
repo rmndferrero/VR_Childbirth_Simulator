@@ -311,6 +311,7 @@ public class MotherDrapingManager : MonoBehaviour
                     lastMistakeWarningTime = Time.time;
                     if (VRDemoGameManager.Instance != null)
                     {
+                        VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.One_Handed_Drape_Violation, "Linen unfolded with 1 hand");
                         VRDemoGameManager.Instance.ShowWarning("Sterile Technique: You must hold and unfold the drape with BOTH hands!");
                     }
                 }
@@ -429,7 +430,7 @@ public class MotherDrapingManager : MonoBehaviour
 
             if (VRDemoGameManager.Instance != null)
             {
-                VRDemoGameManager.Instance.RecordMistake("Draping_Order_Violation");
+                VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.Out_Of_Order_Drape, $"Target: Zone {currentTargetIndex + 1}, Placed: Zone {slotIndex + 1}");
                 VRDemoGameManager.Instance.ShowWarning("Out of order! Drape in order: 1. Under Buttocks -> 2. Abdomen -> 3. Left Thigh -> 4. Right Thigh!");
             }
         }

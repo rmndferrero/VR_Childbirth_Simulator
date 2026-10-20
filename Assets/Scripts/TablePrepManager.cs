@@ -205,13 +205,13 @@ public class TablePrepManager : MonoBehaviour
 
     private void RecordMistake(string reason)
     {
-        if (PerinealCareManager.Instance != null)
+        if (VRDemoGameManager.Instance != null)
+        {
+            VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.Incorrect_Table_Slot, reason);
+        }
+        else if (PerinealCareManager.Instance != null)
         {
             PerinealCareManager.Instance.RecordClinicalViolation(reason, 5);
-        }
-        else if (VRDemoGameManager.Instance != null)
-        {
-            VRDemoGameManager.Instance.RecordDropPenalty("Wrong_Table_Slot", reason);
         }
     }
 

@@ -421,6 +421,7 @@ public class ToolItem : MonoBehaviour
             {
                 VRHeadsetVisualFeedback.Instance.TriggerStep1ToolViolation(toolID);
             }
+            VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.Tool_Handled_Before_Consent, toolID);
         }
         else if (VRDemoGameManager.Instance != null)
         {

@@ -1,0 +1,1153 @@
+=== SCENE HIERARCHY DUMP: MainScene (28 Roots) ===
+• === [1] CORE MANAGERS ===
+• GameManager
+• PerinealCareManager
+• StrokeTrackingManager
+• === [2] PLAYER & VR RIG ===
+• Player
+  • Camera Offset
+    • Main Camera
+      • Sphere
+    • Gaze Interactor [INACTIVE]
+    • Gaze Stabilized [INACTIVE]
+      • Gaze Stabilized Attach
+    • LEFT HAND
+      • Poke Interactor
+        • Poke Point
+          • Pinch_Pointer_LOD0
+        • Poke Point Affordances
+          • Poke
+          • NearFar
+      • Near-Far Interactor
+        • LineVisual
+      • Teleport Interactor
+      • Left Controller Visual [INACTIVE]
+        • UniversalController
+          • Bumper
+          • Button_Home
+          • Controller_Base
+          • TouchPad
+          • Trigger
+          • XRController_Thumbstick_Buttons
+            • Button_A
+            • Button_B
+            • ThumbStick
+            • ThumbStick_Base
+      • Left Hand Model
+        • hands:hands_geom
+          • hands:Lhand
+        • hands:l_hand_world
+          • hands:b_l_hand
+            • hands:b_l_grip
+            • hands:b_l_hand_ignore
+            • hands:b_l_index1
+              • hands:b_l_index2
+                • hands:b_l_index3
+                  • hands:b_l_index_ignore
+            • hands:b_l_middle1
+              • hands:b_l_middle2
+                • hands:b_l_middle3
+                  • hands:b_l_middle_ignore
+            • hands:b_l_pinky0
+              • hands:b_l_pinky1
+                • hands:b_l_pinky2
+                  • hands:b_l_pinky3
+                    • hands:b_l_pinky_ignore
+            • hands:b_l_ring1
+              • hands:b_l_ring2
+                • hands:b_l_ring3
+                  • hands:b_l_ring_ignore
+            • hands:b_l_thumb1
+              • hands:b_l_thumb2
+                • hands:b_l_thumb3
+                  • hands:b_l_thumb_ignore
+    • Left Controller Teleport Stabilized Origin
+      • Left Controller Stabilized Attach
+    • RIGHT HAND
+      • Poke Interactor
+        • Poke Point
+          • Pinch_Pointer_LOD0
+        • Poke Point Affordances
+          • Poke
+          • NearFar
+      • Near-Far Interactor
+        • LineVisual
+      • Teleport Interactor
+      • Right Controller Visual [INACTIVE]
+        • UniversalController
+          • Bumper
+          • Button_Home
+          • Controller_Base
+          • TouchPad
+          • Trigger
+          • XRController_Thumbstick_Buttons
+            • Button_A
+            • Button_B
+            • ThumbStick
+            • ThumbStick_Base
+      • Right Hand Model
+        • hands:hands_geom
+          • hands:Rhand
+        • hands:r_hand_world
+          • hands:b_r_hand
+            • hands:b_r_grip
+            • hands:b_r_hand_ignore
+            • hands:b_r_index1
+              • hands:b_r_index2
+                • hands:b_r_index3
+                  • hands:b_r_index_ignore
+            • hands:b_r_middle1
+              • hands:b_r_middle2
+                • hands:b_r_middle3
+                  • hands:b_r_middle_ignore
+            • hands:b_r_pinky0
+              • hands:b_r_pinky1
+                • hands:b_r_pinky2
+                  • hands:b_r_pinky3
+                    • hands:b_r_pinky_ignore
+            • hands:b_r_ring1
+              • hands:b_r_ring2
+                • hands:b_r_ring3
+                  • hands:b_r_ring_ignore
+            • hands:b_r_thumb1
+              • hands:b_r_thumb2
+                • hands:b_r_thumb3
+                  • hands:b_r_thumb_ignore
+    • Right Controller Teleport Stabilized Origin
+      • Right Controller Stabilized Attach
+  • Locomotion
+    • Turn
+    • Move
+    • Grab Move [INACTIVE]
+    • Teleportation [INACTIVE]
+    • Climb [INACTIVE]
+      • Climb Teleport
+    • Gravity
+    • Jump [INACTIVE]
+• PlayerSpawnPoint
+• XR Interaction Manager
+• EventSystem
+• === [3] PATIENT & CLINICAL MODEL ===
+• Mother
+  • labor
+    • bebe
+      • umbilical cord
+    • bodyfinal
+    • pregfemale
+      • Root
+        • hip
+          • abdomenLower
+            • abdomenUpper
+              • chestLower
+                • chestUpper
+                  • lCollar
+                    • lShldrBend
+                      • lShldrTwist
+                        • lForearmBend
+                          • lForearmTwist
+                            • lHand
+                              • lCarpal1
+                                • lIndex1
+                                  • lIndex2
+                                    • lIndex3
+                                      • lIndex3_end
+                              • lCarpal2
+                                • lMid1
+                                  • lMid2
+                                    • lMid3
+                                      • lMid3_end
+                              • lCarpal3
+                                • lRing1
+                                  • lRing2
+                                    • lRing3
+                                      • lRing3_end
+                              • lCarpal4
+                                • lPinky1
+                                  • lPinky2
+                                    • lPinky3
+                                      • lPinky3_end
+                              • lThumb1
+                                • lThumb2
+                                  • lThumb3
+                                    • lThumb3_end
+                    • lShldrIK
+                      • lForearmIK
+                        • lForearmIK_end
+                  • neckLower
+                    • neckUpper
+                      • head
+                        • lEar
+                          • lEar_end
+                        • lEye
+                          • lEye_end
+                        • lowerJaw
+                          • lowerFaceRig
+                            • BelowJaw
+                              • BelowJaw_end
+                            • Chin
+                              • Chin_end
+                            • lCheekLower
+                              • lCheekLower_end
+                            • LipBelow
+                              • LipBelow_end
+                            • LipLowerMiddle
+                              • LipLowerMiddle_end
+                            • lJawClench
+                              • lJawClench_end
+                            • lLipCorner
+                              • lLipCorner_end
+                            • lLipLowerInner
+                              • lLipLowerInner_end
+                            • lLipLowerOuter
+                              • lLipLowerOuter_end
+                            • lNasolabialLower
+                              • lNasolabialLower_end
+                            • lNasolabialMouthCorner
+                              • lNasolabialMouthCorner_end
+                            • rCheekLower
+                              • rCheekLower_end
+                            • rJawClench
+                              • rJawClench_end
+                            • rLipCorner
+                              • rLipCorner_end
+                            • rLipLowerInner
+                              • rLipLowerInner_end
+                            • rLipLowerOuter
+                              • rLipLowerOuter_end
+                            • rNasolabialLower
+                              • rNasolabialLower_end
+                            • rNasolabialMouthCorner
+                              • rNasolabialMouthCorner_end
+                          • lowerTeeth
+                            • tongue01
+                              • tongue02
+                                • tongue03
+                                  • tongue04
+                                    • tongue04_end
+                        • rEar
+                          • rEar_end
+                        • rEye
+                          • rEye_end
+                        • upperFaceRig
+                          • CenterBrow
+                            • CenterBrow_end
+                          • lBrowInner
+                            • lBrowInner_end
+                          • lBrowMid
+                            • lBrowMid_end
+                          • lBrowOuter
+                            • lBrowOuter_end
+                          • lCheekUpper
+                            • lCheekUpper_end
+                          • lEyelidInner
+                            • lEyelidInner_end
+                          • lEyelidInner(drv)
+                            • lEyelidInner(drv)_end
+                          • lEyelidLower
+                            • lEyelidLower_end
+                          • lEyelidLower(drv)
+                            • lEyelidLower(drv)_end
+                          • lEyelidLowerInner
+                            • lEyelidLowerInner_end
+                          • lEyelidLowerInner(drv)
+                            • lEyelidLowerInner(drv)_end
+                          • lEyelidLowerOuter
+                            • lEyelidLowerOuter_end
+                          • lEyelidLowerOuter(drv)
+                            • lEyelidLowerOuter(drv)_end
+                          • lEyelidOuter
+                            • lEyelidOuter_end
+                          • lEyelidOuter(drv)
+                            • lEyelidOuter(drv)_end
+                          • lEyelidUpper
+                            • lEyelidUpper_end
+                          • lEyelidUpper(drv)
+                            • lEyelidUpper(drv)_end
+                          • lEyelidUpperInner
+                            • lEyelidUpperInner_end
+                          • lEyelidUpperInner(drv)
+                            • lEyelidUpperInner(drv)_end
+                          • lEyelidUpperOuter
+                            • lEyelidUpperOuter_end
+                          • lEyelidUpperOuter(drv)
+                            • lEyelidUpperOuter(drv)_end
+                          • LipUpperMiddle
+                            • LipUpperMiddle_end
+                          • lLipBelowNose
+                            • lLipBelowNose_end
+                          • lLipNasolabialCrease
+                            • lLipNasolabialCrease_end
+                          • lLipUpperInner
+                            • lLipUpperInner_end
+                          • lLipUpperOuter
+                            • lLipUpperOuter_end
+                          • lNasolabialMiddle
+                            • lNasolabialMiddle_end
+                          • lNasolabialUpper
+                            • lNasolabialUpper_end
+                          • lNostril
+                            • lNostril_end
+                          • lSquintInner
+                            • lSquintInner_end
+                          • lSquintOuter
+                            • lSquintOuter_end
+                          • MidNoseBridge
+                            • MidNoseBridge_end
+                          • Nose
+                            • Nose_end
+                          • rBrowInner
+                            • rBrowInner_end
+                          • rBrowMid
+                            • rBrowMid_end
+                          • rBrowOuter
+                            • rBrowOuter_end
+                          • rCheekUpper
+                            • rCheekUpper_end
+                          • rEyelidInner
+                            • rEyelidInner_end
+                          • rEyelidInner(drv)
+                            • rEyelidInner(drv)_end
+                          • rEyelidLower
+                            • rEyelidLower_end
+                          • rEyelidLower(drv)
+                            • rEyelidLower(drv)_end
+                          • rEyelidLowerInner
+                            • rEyelidLowerInner_end
+                          • rEyelidLowerInner(drv)
+                            • rEyelidLowerInner(drv)_end
+                          • rEyelidLowerOuter
+                            • rEyelidLowerOuter_end
+                          • rEyelidLowerOuter(drv)
+                            • rEyelidLowerOuter(drv)_end
+                          • rEyelidOuter
+                            • rEyelidOuter_end
+                          • rEyelidOuter(drv)
+                            • rEyelidOuter(drv)_end
+                          • rEyelidUpper
+                            • rEyelidUpper_end
+                          • rEyelidUpper(drv)
+                            • rEyelidUpper(drv)_end
+                          • rEyelidUpperInner
+                            • rEyelidUpperInner_end
+                          • rEyelidUpperInner(drv)
+                            • rEyelidUpperInner(drv)_end
+                          • rEyelidUpperOuter
+                            • rEyelidUpperOuter_end
+                          • rEyelidUpperOuter(drv)
+                            • rEyelidUpperOuter(drv)_end
+                          • rLipBelowNose
+                            • rLipBelowNose_end
+                          • rLipNasolabialCrease
+                            • rLipNasolabialCrease_end
+                          • rLipUpperInner
+                            • rLipUpperInner_end
+                          • rLipUpperOuter
+                            • rLipUpperOuter_end
+                          • rNasolabialMiddle
+                            • rNasolabialMiddle_end
+                          • rNasolabialUpper
+                            • rNasolabialUpper_end
+                          • rNostril
+                            • rNostril_end
+                          • rSquintInner
+                            • rSquintInner_end
+                          • rSquintOuter
+                            • rSquintOuter_end
+                        • upperTeeth
+                          • upperTeeth_end
+                  • rCollar
+                    • rShldrBend
+                      • rShldrTwist
+                        • rForearmBend
+                          • rForearmTwist
+                            • rHand
+                              • rCarpal1
+                                • rIndex1
+                                  • rIndex2
+                                    • rIndex3
+                                      • rIndex3_end
+                              • rCarpal2
+                                • rMid1
+                                  • rMid2
+                                    • rMid3
+                                      • rMid3_end
+                              • rCarpal3
+                                • rRing1
+                                  • rRing2
+                                    • rRing3
+                                      • rRing3_end
+                              • rCarpal4
+                                • rPinky1
+                                  • rPinky2
+                                    • rPinky3
+                                      • rPinky3_end
+                              • rThumb1
+                                • rThumb2
+                                  • rThumb3
+                                    • rThumb3_end
+                    • rShldrIK
+                      • rForearmIK
+                        • rForearmIK_end
+                • lPectoral
+                  • lPectoral_end
+                • lPectoral(drv)
+                  • lPectoral(drv)_end
+                • rPectoral
+                  • rPectoral_end
+                • rPectoral(drv)
+                  • rPectoral(drv)_end
+          • pelvis
+            • Anus
+              • Anus_end
+            • Genitals
+              • Genitals_end
+                • Interaction_PerinealZones
+            • lThighBend
+              • lThighTwist
+                • lShin
+                  • lFoot
+                    • lMetatarsals
+                      • lToe
+                        • lBigToe
+                          • lBigToe_2
+                            • lBigToe_2_end
+                        • lSmallToe1
+                          • lSmallToe1_2
+                            • lSmallToe1_2_end
+                        • lSmallToe2
+                          • lSmallToe2_2
+                            • lSmallToe2_2_end
+                        • lSmallToe3
+                          • lSmallToe3_2
+                            • lSmallToe3_2_end
+                        • lSmallToe4
+                          • lSmallToe4_2
+                            • lSmallToe4_2_end
+                    • MCH-lHeelIK
+                      • MCH-lHeelIK_end
+                    • MCH-lTarsalsIK
+                      • MCH-lTarsalsIK_end
+            • lThighIK
+              • lShinIK
+                • lShinIK_end
+            • rThighBend
+              • rThighTwist
+                • rShin
+                  • rFoot
+                    • MCH-rHeelIK
+                      • MCH-rHeelIK_end
+                    • MCH-rTarsalsIK
+                      • MCH-rTarsalsIK_end
+                    • rMetatarsals
+                      • rToe
+                        • rBigToe
+                          • rBigToe_2
+                            • rBigToe_2_end
+                        • rSmallToe1
+                          • rSmallToe1_2
+                            • rSmallToe1_2_end
+                        • rSmallToe2
+                          • rSmallToe2_2
+                            • rSmallToe2_2_end
+                        • rSmallToe3
+                          • rSmallToe3_2
+                            • rSmallToe3_2_end
+                        • rSmallToe4
+                          • rSmallToe4_2
+                            • rSmallToe4_2_end
+            • rThighIK
+              • rShinIK
+                • rShinIK_end
+          • Perineal_Stroke_Sliders
+            • StrokeSlider_1_Right_Labia_Majora
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_2_Mons_Pubis
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_3_Left_Labia_Majora
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_4_Right_Labia_Minora
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_5_Right_Inner_Thigh
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_6_Left_Inner_Thigh
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead
+            • StrokeSlider_7_Left_Buttock
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_8_Right_Buttock
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • EndNode
+              • HandleBead [INACTIVE]
+            • StrokeSlider_9_Anus
+              • StartPoint
+              • EndPoint
+              • TrackLine
+              • FillLine
+              • StartNode
+              • HandleBead [INACTIVE]
+          • Mother_Betadine_Puddles
+            • BetadinePuddle_Zone_1
+              • Puddle_7_5_StrokeZone_1_RightLabiaMajora [INACTIVE]
+              • Coating_10_StrokeZone_1_RightLabiaMajora [INACTIVE]
+            • BetadinePuddle_Zone_2
+              • Puddle_7_5_StrokeZone_2_MonsPubis [INACTIVE]
+              • Coating_10_StrokeZone_2_MonsPubis [INACTIVE]
+            • BetadinePuddle_Zone_3
+              • Puddle_7_5_StrokeZone_3_LeftLabiaMajora [INACTIVE]
+              • Coating_10_StrokeZone_3_LeftLabiaMajora [INACTIVE]
+            • BetadinePuddle_Zone_4
+              • Puddle_7_5_StrokeZone_4_RightLabiaMinora [INACTIVE]
+              • Coating_10_StrokeZone_4_RightLabiaMinora [INACTIVE]
+            • BetadinePuddle_Zone_5
+              • Puddle_7_5_StrokeZone_5_RightInnerThigh [INACTIVE]
+              • Coating_10_StrokeZone_5_RightInnerThigh [INACTIVE]
+            • BetadinePuddle_Zone_6
+              • Puddle_7_5_StrokeZone_6_LeftInnerThigh [INACTIVE]
+              • Coating_10_StrokeZone_6_LeftInnerThigh [INACTIVE]
+            • BetadinePuddle_Zone_7
+              • Puddle_7_5_StrokeZone_7_LeftButtock [INACTIVE]
+              • Coating_10_StrokeZone_7_LeftButtock [INACTIVE]
+            • BetadinePuddle_Zone_8
+              • Puddle_7_5_StrokeZone_8_RightButtock [INACTIVE]
+              • Coating_10_StrokeZone_8_RightButtock [INACTIVE]
+            • BetadinePuddle_Zone_9
+              • Puddle_7_5_StrokeZone_9_Anus [INACTIVE]
+              • Coating_10_StrokeZone_9_Anus [INACTIVE]
+        • lHandIK
+          • lHandIK_end
+        • lHeelIK
+          • lTarsalsIK
+            • lFootIK
+              • lFootIK_end
+          • lToeIK
+            • lToeIK_end
+        • rHandIK
+          • rHandIK_end
+        • rHeelIK
+          • rTarsalsIK
+            • rFootIK
+              • rFootIK_end
+          • rToeIK
+            • rToeIK_end
+    • scrubs
+    • SurgeryTable2.001
+  • Interaction_DrapingZones
+    • 1. Under Buttocks
+      • GhostIndicator [INACTIVE]
+      • PlacedDrape_Green [INACTIVE]
+    • 2. Abdominal
+      • GhostIndicator [INACTIVE]
+      • PlacedDrape_Green [INACTIVE]
+    • 3. Left Leg
+      • GhostIndicator [INACTIVE]
+      • PlacedDrape_Green [INACTIVE]
+    • 4. Right Leg
+      • GhostIndicator [INACTIVE]
+      • PlacedDrape_Green [INACTIVE]
+• === [4] CLINICAL TABLES & TOOLS ===
+• Table 1
+  • 18533_Utility_Cart
+  • tray
+  • Kidney_Basin
+    • AttachPoint
+  • Curette (1)
+    • Curette
+    • AttachPoint
+  • Mayo_Scissors (1)
+    • Object002
+    • AttachPoint
+  • Mayo_Scissors (2)
+    • Object002
+    • AttachPoint
+  • Bandage_Scissors (1)
+    • 17218_Bandage_scissors
+    • AttachPoint
+  • Bandage_Scissors (2)
+    • 17218_Bandage_scissors
+    • AttachPoint
+  • Umbi_Clamp (1)
+    • AttachPoint
+  • Dry_Linen
+    • LeftGrabAttach
+    • RightGrabAttach
+    • AttachPoint
+  • Scalpel (1)
+    • 16973_Scalpel_v1_NEW
+      • 16973_Scalpel_v1
+    • AttachPoint
+  • Forceps
+    • AttachPoint
+  • Forceps (1)
+    • AttachPoint
+  • Tongs
+    • AttachPoint
+  • Scissor
+    • AttachPoint
+  • Scissor (1)
+    • AttachPoint
+• Table 2
+  • Utility_Cart
+    • 18533_Utility_Cart
+  • tray
+  • Table2_Prep_Manager
+    • Table2_Slots
+      • Slot_1
+        • Slot_1_GhostPlate [INACTIVE]
+      • Slot_2
+        • Slot_2_GhostPlate [INACTIVE]
+      • Slot_3
+        • Slot_3_GhostPlate [INACTIVE]
+      • Slot_4
+        • Slot_4_GhostPlate [INACTIVE]
+      • Slot_5
+        • Slot_5_GhostPlate [INACTIVE]
+      • Slot_6
+        • Slot_6_GhostPlate [INACTIVE]
+• Table 3
+  • Utility_Cart (1)
+    • 18533_Utility_Cart
+  • 7.5_iodine
+    • SpawnTrigger
+  • 10_iodine
+    • SpawnTrigger
+  • Pickup Jar
+    • Pickup Forceps
+      • Bone
+        • Scissors_T1.001
+      • Bone.001
+        • Scissors_T1
+      • CottonSocket
+      • AttachPoint
+    • Canvas
+      • Text (TMP)
+  • Handling Jar
+    • Handling Forceps
+      • Bone
+        • Scissors_T1.001
+      • Bone.001
+        • Scissors_T1
+      • CottonSocket
+      • AttachPoint
+    • Canvas
+      • Text (TMP)
+  • Pitcher
+    • HandleGrabPoint
+    • WaterPour
+    • SpoutOrigin
+    • AttachPoint
+• Temporary_WasteBasin
+  • Temporary_Basin_Mesh
+• CottonBall
+• NewBorn_Table
+  • Cube
+  • Plane
+  • Plane.001
+  • Plane.002
+  • Plane.003
+  • Plane.004
+  • Plane.005
+  • Plane.006
+  • Plane.007
+  • Plane.008
+• baby_scale
+  • FINAL(1C016F03-BCC6-491B-9F7D-DC14425E0DD6)_0
+  • FINAL(1C016F03-BCC6-491B-9F7D-DC14425E0DD6)_1
+  • FINAL(2A599516-4B9B-4458-AD73-2215132432D7)
+  • FINAL(6F7B5E41-EAC5-44EE-A78E-C9B9693CF1AB)
+  • FINAL(7FF3C9BF-4F02-48A1-AFB1-4461084490CC)
+  • FINAL(9F59A2C3-7A64-403A-8290-FB506A18893B)
+  • FINAL(31CF473B-8315-4E93-8F85-94A429110586)
+  • FINAL(74AC8A57-021B-49E6-88F8-C0A5FB45C71D)
+  • FINAL(81DB4F5A-E0BB-47B4-ABBA-51D78263DC54)
+  • FINAL(455C663D-5E3D-4428-B527-E0F25AC6822A)
+  • FINAL(764B0ED7-3475-4117-9BB7-FE47A9998533)
+  • FINAL(971DAF0F-A62F-49E7-9023-DCAC0CD4979A)
+  • FINAL(B237231F-9690-4211-9F9F-A81B0F6338C8)
+  • FINAL(BF780839-5E7C-4829-8614-3D9FFFA92D28)
+  • FINAL(D429E550-AD0C-4F8F-A2FA-7FCFC465B171)
+  • FINAL(EC14470F-ED4E-4B03-A8B6-F17238C4CD43)
+  • FINAL(F8979F96-48FA-4028-BC05-B16A18A66784)
+• === [5] UI & HUD CANVASES ===
+• DialogueCanvas
+  • PromptContainer
+    • StartPromptButton
+      • PromptText
+  • DialogueOptionsContainer [INACTIVE]
+    • HeaderTitle
+    • InstructionText
+    • ChoiceButtonsList
+      • ChoiceButton_1
+        • Text
+      • ChoiceButton_2
+        • Text
+      • ChoiceButton_3
+        • Text
+  • MotherResponseContainer [INACTIVE]
+    • SpeakerText
+    • BodyText
+  • PhraseDecisionMatrix [INACTIVE]
+    • HeaderBar
+      • Title
+      • Subtitle
+    • SlotsContainer
+      • Slot_1_Intro
+        • Header
+          • Text
+        • ChipContainer
+          • PlaceholderText
+      • Slot_2_Ident
+        • Header
+          • Text
+        • ChipContainer
+          • PlaceholderText
+      • Slot_3_Explain
+        • Header
+          • Text
+        • ChipContainer
+          • PlaceholderText
+    • LivePreviewCard
+      • Label
+      • StatementText
+    • PoolHeader
+      • Text
+    • TokenPoolContainer
+    • EvaluationBar
+      • ConfirmButton
+        • Text
+      • GaugeBackground
+        • GaugeFill
+        • ScoreText
+      • FeedbackText
+  • SummaryScreen [INACTIVE]
+    • HeaderBar
+      • Title
+    • PageContainer
+      • Page_1_Dialogue
+        • RatingBanner
+        • ArchetypeTitle
+        • Row_Professionalism
+          • Label
+          • BarBG
+            • BarFill
+          • Value
+        • Row_Empathy
+          • Label
+          • BarBG
+            • BarFill
+          • Value
+        • Row_Clarity
+          • Label
+          • BarBG
+            • BarFill
+          • Value
+        • DebriefNotesBox
+          • Label
+          • Notes
+          • Critiques
+      • Page_2_Perineal
+        • Title
+        • Status
+        • Mistakes
+      • Page_3_Draping
+        • Title
+        • Status
+        • Mistakes
+      • Page_4_TableAndFinal
+        • Title
+        • Verdict
+        • Score
+        • Mistakes
+    • FooterNavBar
+      • Button_Back
+        • Text
+      • Text_PageIndicator
+        • Text
+      • Button_Next
+        • Text
+      • Button_Restart [INACTIVE]
+        • Text
+• CleaningProgressCanvas
+  • CardPanel
+    • TitleText
+    • PercentageText
+    • ProgressBarTrack
+      • MovingGreenFill
+    • TargetIndicatorText
+• StrokeGuideCanvas [INACTIVE]
+  • CardPanel
+    • PhaseTitleText
+    • CurrentStrokeTitleText
+    • DirectionInstructionText
+    • StepDotsContainer
+      • Dot_1
+        • Number
+      • Dot_2
+        • Number
+      • Dot_3
+        • Number
+      • Dot_4
+        • Number
+      • Dot_5
+        • Number
+      • Dot_6
+        • Number
+      • Dot_7
+        • Number
+      • Dot_8
+        • Number
+      • Dot_9
+        • Number
+    • LiveFeedbackBanner [INACTIVE]
+• VISUAL UI WARNINGS
+• === [6] ENVIRONMENT & LIGHTING ===
+• ENVIRONMENT
+  • Curtain
+    • clic duo 1
+    • clic duo f004
+    • clic duof003
+    • foroom clic duo rulon1
+    • shnur001
+  • Curtain(1)
+    • clic duo 1
+    • clic duo f004
+    • clic duof003
+    • foroom clic duo rulon1
+    • shnur001
+  • Curtain(2)
+    • clic duo 1
+    • clic duo f004
+    • clic duof003
+    • foroom clic duo rulon1
+    • shnur001
+  • SurgeryLight
+  • window Ac
+  • window Ac (1)
+  • Bot Wall
+    • Cube (4)
+    • Cube (5)
+    • Cube (6)
+    • Cube (7)
+  • Top Wall
+    • Top Wall
+    • Top Wall (1)
+    • Top Wall (2)
+    • Top Wall (3)
+    • Ceiling
+  • Plane
+  • LightPanel (1)
+    • Point Light
+  • LightPanel (2)
+    • Point Light
+  • LightPanel (3)
+    • Point Light
+  • LightPanel
+    • Point Light
+  • LightPanel (4)
+    • Point Light
+  • Baby Bassinet (1) [INACTIVE]
+    • Cube
+    • Cylinder
+    • Empty
+    • NurbsPath
+    • NurbsPath.001
+    • NurbsPath.002
+  • Baby Bassinet (2) [INACTIVE]
+    • Cube
+    • Cylinder
+    • Empty
+    • NurbsPath
+    • NurbsPath.001
+    • NurbsPath.002
+  • Cabinet2 1 (1)
+    • CabinetB_Glass_low
+    • CabinetB_low
+  • TallCabinet2
+    • Cabinet2 1 (2)
+      • CabinetB_Glass_low
+      • CabinetB_low
+    • GloveBox (1)
+      • default
+      • default (2)
+      • default (4)
+      • default (6)
+      • default (8)
+      • default (1)
+      • default (3)
+      • default (5)
+      • default (7)
+    • Towels
+      • towel
+      • towel (3)
+      • towel (14)
+      • towel (33)
+      • towel (36)
+      • towel (15)
+      • towel (24)
+      • towel (18)
+      • towel (25)
+      • towel (21)
+      • towel (26)
+      • towel (1)
+      • towel (4)
+      • towel (34)
+      • towel (37)
+      • towel (16)
+      • towel (27)
+      • towel (19)
+      • towel (28)
+      • towel (22)
+      • towel (29)
+      • towel (2)
+      • towel (5)
+      • towel (35)
+      • towel (38)
+      • towel (17)
+      • towel (30)
+      • towel (20)
+      • towel (31)
+      • towel (23)
+      • towel (32)
+    • Mask_Box
+      • mask_box(closed)
+      • mask_box(closed) (1)
+      • mask_box(closed) (2)
+      • mask_box(closed) (3)
+      • mask_box(closed) (4)
+      • mask_box(closed) (6)
+      • mask_box(closed) (7)
+      • mask_box(closed) (8)
+      • mask_box(closed) (5)
+  • ShortCabinet1 [INACTIVE]
+    • Cabinet3
+    • Syringe_Tray
+      • Bandages
+      • First_Aid_Kit
+      • Lines
+        • Line
+        • Line1
+      • Needles
+        • Needle
+          • Base
+          • Top
+        • Needle1
+          • Base.001
+          • Top.001
+        • Needle2
+          • Base.002
+          • Top.002
+        • Needle3
+          • Base.003
+          • Top.003
+        • Needle4
+          • Base.004
+          • Top.004
+      • Patches
+        • Patches.001
+      • Pills.003
+        • Pills.005
+        • Round_Pills
+      • PillsCases
+        • PillsCase.002
+          • Pills.002
+        • PillsCase1
+          • Pills.001
+        • PillsCase2
+          • Pills
+      • Thermometer
+      • Tray
+      • Tubes
+        • Tube
+        • Tube1
+        • Tube2
+        • Tube3
+        • Tube4
+      • Vaccines
+        • Vaccine
+          • Liquid
+        • Vaccine1
+          • Liquid.001
+        • Vaccine2
+          • Liquid.002
+        • Vaccine3
+          • Liquid.003
+        • Vaccine4
+          • Liquid.004
+    • Tool_Box
+      • Base.006
+      • Top.006
+    • Tool_Box (1)
+      • Base.006
+      • Top.006
+    • Tubes
+      • Cork
+      • Cork.001
+      • Cork.002
+      • Cork.003
+      • Cork.004
+      • Flask
+      • Flask.001
+      • Flask.002
+      • Flask.003
+      • Flask.004
+      • Liquid.005
+      • Liquid.006
+      • Liquid.007
+      • Liquid.008
+      • Liquid.009
+      • Tubes_Supporter
+    • Tubes (1)
+      • Cork
+      • Cork.001
+      • Cork.002
+      • Cork.003
+      • Cork.004
+      • Flask
+      • Flask.001
+      • Flask.002
+      • Flask.003
+      • Flask.004
+      • Liquid.005
+      • Liquid.006
+      • Liquid.007
+      • Liquid.008
+      • Liquid.009
+      • Tubes_Supporter
+    • Tubes (2)
+      • Cork
+      • Cork.001
+      • Cork.002
+      • Cork.003
+      • Cork.004
+      • Flask
+      • Flask.001
+      • Flask.002
+      • Flask.003
+      • Flask.004
+      • Liquid.005
+      • Liquid.006
+      • Liquid.007
+      • Liquid.008
+      • Liquid.009
+      • Tubes_Supporter
+    • Tubes (3)
+      • Cork
+      • Cork.001
+      • Cork.002
+      • Cork.003
+      • Cork.004
+      • Flask
+      • Flask.001
+      • Flask.002
+      • Flask.003
+      • Flask.004
+      • Liquid.005
+      • Liquid.006
+      • Liquid.007
+      • Liquid.008
+      • Liquid.009
+      • Tubes_Supporter
+    • Bottle
+      • Bottle
+      • Label
+      • Lid
+      • Liquid
+    • Bottle (2)
+      • Bottle
+      • Label
+      • Lid
+      • Liquid
+    • Bottle (1)
+      • Bottle
+      • Label
+      • Lid
+      • Liquid
+    • Bottle (3)
+      • Bottle
+      • Label
+      • Lid
+      • Liquid
+    • Dropper_Closed
+      • body_glass
+      • label
+      • pivet
+      • water/serum
+  • ShortCabinet2
+    • Cabinet3 (1)
+    • Tray_Stack
+      • tray
+      • tray (1)
+      • tray (2)
+      • tray (3)
+      • tray (4)
+      • tray (5)
+    • Stethoscope_with_Rest
+      • Stethoscope
+    • baby_scale
+      • FINAL(1C016F03-BCC6-491B-9F7D-DC14425E0DD6)_0
+      • FINAL(1C016F03-BCC6-491B-9F7D-DC14425E0DD6)_1
+      • FINAL(2A599516-4B9B-4458-AD73-2215132432D7)
+      • FINAL(6F7B5E41-EAC5-44EE-A78E-C9B9693CF1AB)
+      • FINAL(7FF3C9BF-4F02-48A1-AFB1-4461084490CC)
+      • FINAL(9F59A2C3-7A64-403A-8290-FB506A18893B)
+      • FINAL(31CF473B-8315-4E93-8F85-94A429110586)
+      • FINAL(74AC8A57-021B-49E6-88F8-C0A5FB45C71D)
+      • FINAL(81DB4F5A-E0BB-47B4-ABBA-51D78263DC54)
+      • FINAL(455C663D-5E3D-4428-B527-E0F25AC6822A)
+      • FINAL(764B0ED7-3475-4117-9BB7-FE47A9998533)
+      • FINAL(971DAF0F-A62F-49E7-9023-DCAC0CD4979A)
+      • FINAL(B237231F-9690-4211-9F9F-A81B0F6338C8)
+      • FINAL(BF780839-5E7C-4829-8614-3D9FFFA92D28)
+      • FINAL(D429E550-AD0C-4F8F-A2FA-7FCFC465B171)
+      • FINAL(EC14470F-ED4E-4B03-A8B6-F17238C4CD43)
+      • FINAL(F8979F96-48FA-4028-BC05-B16A18A66784)
+  • heart_monitor [INACTIVE]
+    • Equipt03|Equipt03 REF|Dupli|
+  • heart_monitor (1) [INACTIVE]
+    • Equipt03|Equipt03 REF|Dupli|
+• Directional Light
+• Global_PostProcess_Volume

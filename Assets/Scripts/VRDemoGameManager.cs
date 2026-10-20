@@ -53,6 +53,13 @@ public class VRDemoGameManager : MonoBehaviour
     [Header("UI Feedback")]
     public TMP_Text feedbackText;
 
+    [Header("Centralized Scoring Rubric")]
+    [Tooltip("Master ScriptableObject rubric defining all passing thresholds and penalty deductions.")]
+    public SimulationScoringRubricSO scoringRubric;
+
+    [Header("Step 8 Summary Screen Controller")]
+    public SummaryScreenController summaryScreenController;
+
     [Header("Scoring Engine")]
     public int currentScore = 100;
     public int currentScenarioScore
@@ -60,7 +67,10 @@ public class VRDemoGameManager : MonoBehaviour
         get => currentScore;
         set => currentScore = value;
     }
-    public int dropPenaltyPoints = 5;
+    public int dropPenaltyPoints => scoringRubric != null ? scoringRubric.floorDropPenalty : 5;
+
+    [Header("Communication Debrief Cache (Step 1 -> Step 8)")]
+    public CommunicationDebriefData communicationDebrief;
 
     [Header("Scene Component References")]
     public PerinealCareManager perinealCareManager;
@@ -92,7 +102,7 @@ public class VRDemoGameManager : MonoBehaviour
 
     public void InitializeSimulation()
     {
-        currentScore = 100;
+        currentScore = scoringRubric != null ? scoringRubric.maxTotalScore : 100;
         penalizedMistakes.Clear();
         heldToolPenalties.Clear();
         mistakeLog.Clear();
@@ -195,10 +205,25 @@ public class VRDemoGameManager : MonoBehaviour
 
         Debug.Log($"[VRDemoGameManager] Step 8 Reached: Final Score = {finalScore}/100. Total mistakes logged: {mistakeLog.Count}");
 
-        var dialogueUI = FindFirstObjectByType<FloatingPokeDialogueUI>();
-        if (dialogueUI != null)
+        if (summaryScreenController != null)
         {
-            dialogueUI.ShowSummaryEvaluation(finalScore, mistakeLog);
+            summaryScreenController.OpenSummaryScreen();
+        }
+        else
+        {
+            var summaryScreen = FindFirstObjectByType<SummaryScreenController>();
+            if (summaryScreen != null)
+            {
+                summaryScreen.OpenSummaryScreen();
+            }
+            else
+            {
+                var dialogueUI = FindFirstObjectByType<FloatingPokeDialogueUI>();
+                if (dialogueUI != null)
+                {
+                    dialogueUI.ShowSummaryEvaluation(finalScore, mistakeLog);
+                }
+            }
         }
 
         SaveRecordLocally();
@@ -211,6 +236,27 @@ public class VRDemoGameManager : MonoBehaviour
         if (feedbackText != null && !string.IsNullOrEmpty(warningMessage))
         {
             feedbackText.text = warningMessage;
+        }
+    }
+
+    /// <summary>
+    /// Records a rubric-defined clinical violation with centralized penalty calculation.
+    /// </summary>
+    public void RecordViolation(ClinicalViolationType violationType, string customDetails = "")
+    {
+        int penalty = scoringRubric != null ? scoringRubric.GetPenaltyForViolation(violationType) : 5;
+        string violationName = violationType.ToString().Replace('_', ' ');
+        string mistakeSignature = $"step{(int)currentSimulationPhase}_{violationType}_{customDetails}";
+
+        if (!penalizedMistakes.Contains(mistakeSignature))
+        {
+            penalizedMistakes.Add(mistakeSignature);
+            string readable = string.IsNullOrEmpty(customDetails) ? violationName : $"{violationName} ({customDetails})";
+            mistakeLog.Add($"Step {(int)currentSimulationPhase}: {readable} (-{penalty} pts)");
+
+            currentScore = Mathf.Max(0, currentScore - penalty);
+            ShowWarning($"Violation: {readable} (-{penalty} pts)");
+            Debug.Log($"[Scoring Engine] Violation '{violationType}' recorded. Deducted {penalty} pts. Remaining Score: {currentScore}");
         }
     }
 
