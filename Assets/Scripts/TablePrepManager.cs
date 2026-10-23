@@ -33,6 +33,10 @@ public class TablePrepManager : MonoBehaviour
     public bool isTablePrepActive = false;
     public bool isTablePrepCompleted = false;
 
+    [Header("Mayo Stand Sterile Field State")]
+    [Tooltip("Must be true (Mayo Stand draped with sterile linen) before any surgical instrument can be placed.")]
+    public bool isMayoDraped = false;
+
     public event Action<int, int> OnSlotCountUpdated; // (filledCount, totalCount)
     public event Action OnTablePrepCompleted;
 
@@ -92,7 +96,7 @@ public class TablePrepManager : MonoBehaviour
     /// </summary>
     public bool TryHandleToolRelease(ToolItem tool)
     {
-        if (!isTablePrepActive || tool == null || isTablePrepCompleted) return false;
+        if (tool == null) return false;
 
         CacheSlots();
 
@@ -118,6 +122,20 @@ public class TablePrepManager : MonoBehaviour
             // Not near any Table 2 slot
             return false;
         }
+
+        // Gatekeeping: Enforce sterile field on Mayo Stand before accepting any instrument
+        if (!isMayoDraped)
+        {
+            if (VRHeadsetVisualFeedback.Instance != null)
+            {
+                VRHeadsetVisualFeedback.Instance.TriggerUnsterileMayoViolation(tool.toolID);
+            }
+            PlaySound(wrongSlotClip);
+            closestSlot.RejectWrongTool(tool);
+            return true;
+        }
+
+        if (!isTablePrepActive || isTablePrepCompleted) return false;
 
         // Check if this slot is already filled by another tool
         if (closestSlot.isFilled && closestSlot.currentPlacedTool != null && closestSlot.currentPlacedTool != tool)

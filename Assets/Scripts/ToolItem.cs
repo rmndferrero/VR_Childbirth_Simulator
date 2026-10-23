@@ -136,6 +136,7 @@ public class ToolItem : MonoBehaviour
             grab.matchAttachPosition = true;
             grab.matchAttachRotation = true;
             grab.attachEaseInTime = 0.12f;
+            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
 
             SetupHandAttachPoint();
         }
@@ -408,10 +409,12 @@ public class ToolItem : MonoBehaviour
             CancelDropTimer();
         }
 
-        // Enable dynamic physics while held by player hand
+        // Enable dynamic physics while held by player hand with continuous anti-tunneling
         if (rb != null)
         {
             rb.isKinematic = false;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
         }
 
         // Check if player tries to use/grab any tool before talking to mother in Step 1
@@ -433,8 +436,8 @@ public class ToolItem : MonoBehaviour
     {
         if (isBeingRejected) return;
 
-        // 1. Check if released near any Table 2 slot during Step 7 (Mayo Prep)
-        if (TablePrepManager.Instance != null && TablePrepManager.Instance.isTablePrepActive)
+        // 1. Check if released near any Table 2 slot (enforces Mayo draping gate & slot snapping)
+        if (TablePrepManager.Instance != null)
         {
             if (TablePrepManager.Instance.TryHandleToolRelease(this))
             {

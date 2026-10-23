@@ -145,6 +145,36 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         SendHapticsToControllers(0.6f, 0.35f);
     }
 
+    private float lastMayoViolationTime = 0f;
+
+    /// <summary>
+    /// Triggered when the player attempts to place or arrange tools onto Table 2 before draping the Mayo Stand.
+    /// Matches the visual and audio feedback of the Step 1 pitcher/consent lockout.
+    /// </summary>
+    public void TriggerUnsterileMayoViolation(string toolName)
+    {
+        if (Time.time - lastMayoViolationTime < 1.5f) return;
+        lastMayoViolationTime = Time.time;
+
+        string cleanName = string.IsNullOrEmpty(toolName) ? "Instrument" : toolName.Replace('_', ' ');
+        string title = "Sterile Field Breach!";
+        string subtitle = $"Drape the Mayo Stand with sterile linen before setting up instruments ({cleanName}).";
+
+        FlashRedVignette(1.8f);
+        ShowInFaceHUD(title, subtitle, new Color(0.95f, 0.20f, 0.20f, 1f), 3.2f);
+
+        if (VRDemoGameManager.Instance != null)
+        {
+            VRDemoGameManager.Instance.RecordViolation(
+                ClinicalViolationType.Unsterile_Mayo_Placement_Violation,
+                $"Placed '{cleanName}' on un-draped Mayo Stand"
+            );
+        }
+
+        PlayWarningAudio();
+        SendHapticsToControllers(0.7f, 0.4f);
+    }
+
     /// <summary>
     /// Flashes the red vignette around the perimeter of the player's VR field of view.
     /// </summary>

@@ -19,6 +19,7 @@ public enum ClinicalViolationType
 
     // Step 7: Mayo Table Prep
     Incorrect_Table_Slot,
+    Unsterile_Mayo_Placement_Violation,
 
     // Universal Field Violations
     Floor_Drop_Instrument,
@@ -75,6 +76,9 @@ public class SimulationScoringRubricSO : ScriptableObject
     [Tooltip("Penalty for placing a surgical instrument into the wrong Table 2 slot.")]
     public int incorrectTableSlotPenalty = 5;
 
+    [Tooltip("Penalty for attempting to place an instrument onto the Mayo Stand before it is draped with sterile linen.")]
+    public int unsterileMayoPlacementPenalty = 10;
+
     [Header("Universal Sterile Field Violations")]
     [Tooltip("Penalty for dropping any sterile instrument or linen onto the floor.")]
     public int floorDropPenalty = 5;
@@ -107,6 +111,8 @@ public class SimulationScoringRubricSO : ScriptableObject
                 return outOfOrderDrapePenalty;
             case ClinicalViolationType.Incorrect_Table_Slot:
                 return incorrectTableSlotPenalty;
+            case ClinicalViolationType.Unsterile_Mayo_Placement_Violation:
+                return unsterileMayoPlacementPenalty;
             case ClinicalViolationType.Floor_Drop_Instrument:
                 return floorDropPenalty;
             case ClinicalViolationType.Contaminated_Drop_Outside_Basin:

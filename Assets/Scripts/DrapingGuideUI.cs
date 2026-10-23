@@ -169,21 +169,49 @@ public class DrapingGuideUI : MonoBehaviour
                 directionInstructionText.text = "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Place drape on any remaining blue zone.";
             }
         }
+        else if (MayoStandDrapeSocket.Instance != null && !MayoStandDrapeSocket.Instance.isDraped)
+        {
+            ShowMayoDrapingStep();
+        }
         else
         {
             if (currentDrapeTitleText != null)
             {
-                currentDrapeTitleText.text = "<color=#34D399><b>✓ All 4 Drapes Placed Successfully!</b></color>";
+                currentDrapeTitleText.text = "<color=#34D399><b>✓ Patient & Mayo Stand Draped!</b></color>";
             }
             if (directionInstructionText != null)
             {
-                directionInstructionText.text = "Sterile field prepared. Notify mother and proceed to delivery.";
+                directionInstructionText.text = "Sterile field prepared. Proceeding to Table Setup.";
             }
             if (progressBarFill != null) progressBarFill.fillAmount = 1f;
-            if (progressPercentageText != null) progressPercentageText.text = "100% (4/4 Complete)";
+            if (progressPercentageText != null) progressPercentageText.text = "100% (Complete)";
         }
 
         UpdateStepDots();
+    }
+
+    /// <summary>
+    /// Displays step-specific instructions when transitioning to Mayo Stand Draping.
+    /// </summary>
+    public void ShowMayoDrapingStep()
+    {
+        if (currentDrapeTitleText != null)
+        {
+            currentDrapeTitleText.text = "Step 6B: <color=#38BDF8><b>Drape the Mayo Stand</b></color>";
+        }
+        if (directionInstructionText != null)
+        {
+            directionInstructionText.text = "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Drape the Mayo Stand before setting up tools.";
+        }
+        if (progressBarFill != null)
+        {
+            progressBarFill.fillAmount = 0.85f;
+        }
+        if (progressPercentageText != null)
+        {
+            progressPercentageText.text = "Mother Draped (Drape Mayo Stand)";
+        }
+        ShowFeedback("Patient Draped! Now drape the Mayo Stand with BOTH hands.", 3.0f);
     }
 
     private void UpdateStepDots()

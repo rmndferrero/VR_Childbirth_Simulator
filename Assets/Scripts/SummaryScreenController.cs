@@ -255,12 +255,13 @@ public class SummaryScreenController : MonoBehaviour
                 "<b>Sterile Draping Milestones:</b>\n" +
                 "• Glove Protocol: Sterile surgical blue gloves equipped.\n" +
                 "• Two-Handed Technique: Strict dual-handed linen unfolding maintained.\n" +
-                "• Sequential Coverage: 4 anatomical zones draped (Under Buttocks, Abdomen, Left Thigh, Right Thigh).";
+                "• Sequential Coverage: 4 anatomical zones draped (Under Buttocks, Abdomen, Left Thigh, Right Thigh).\n" +
+                "• Mayo Stand Aseptic Draping: Sterile cover applied before instrument transfer.";
         }
 
         if (p3MistakesListText != null)
         {
-            var drapingMistakes = FilterMistakesByKeywords("drape", "linen", "glove", "unfold");
+            var drapingMistakes = FilterMistakesByKeywords("drape", "linen", "glove", "unfold", "mayo");
             p3MistakesListText.text = drapingMistakes.Count == 0
                 ? "<color=#34D399><b>✓ Flawless Sterile Draping!</b>\n• Unfolded linen with both hands prior to contact.\n• Correct anatomical sequence maintained.\n• Sterile field preserved.</color>"
                 : "<b>Clinical Draping Deductions:</b>\n• " + string.Join("\n• ", drapingMistakes.ToArray());
