@@ -5,16 +5,20 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Attached to each of the 3 drop slots on the clinical clipboard UI.
-/// Enforces category validation (Introduction, PatientIdentification, ProcedureExplanation),
-/// handles chip snapping, swapping, and ejection.
+/// Attached to each of the 3 top target drop slots on the Phrase Board.
+/// Features:
+/// - Category validation (Greeting, PatientIdentification, ProcedureExplanation).
+/// - Clean snapping of chips into slot with zero local Z-depth.
+/// - Tap to eject chip back to its home bank.
+/// - Drop detection for drag-to-slot and drag-to-swap.
+/// - Sleek UbiSim dark-slate styling and cyan highlight when occupied.
 /// </summary>
-public class PhraseDropSlot : MonoBehaviour, IDropHandler
+public class PhraseDropSlot : MonoBehaviour, IDropHandler, IPointerClickHandler
 {
     [Header("Slot Configuration")]
     public PhraseSlotCategory targetCategory;
     [Range(0f, 1f)] public float stageWeight = 0.33f;
-    public string slotTitle = "1. Introduction";
+    public string slotTitle = "1. Greeting";
 
     [Header("UI Visual Components")]
     public Transform chipContainer;
@@ -23,10 +27,11 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler
     public Image slotBackground;
     public Outline slotOutline;
 
-    [Header("Feedback Colors")]
-    public Color normalBorderColor = new Color(0.35f, 0.45f, 0.55f, 0.6f);
-    public Color hoverValidColor = new Color(0.20f, 0.85f, 0.50f, 0.9f);
-    public Color rejectColor = new Color(0.95f, 0.25f, 0.25f, 0.9f);
+    [Header("UbiSim Medical Colors")]
+    public Color normalBgColor = new Color(0.08f, 0.12f, 0.18f, 0.85f);     // #141F2E Dark Slate
+    public Color normalBorderColor = new Color(0.20f, 0.30f, 0.45f, 0.70f);  // #334D73 Subtle Slate
+    public Color occupiedBorderColor = new Color(0.22f, 0.74f, 0.97f, 0.95f);// #38BDF8 Glowing Cyan
+    public Color rejectColor = new Color(0.95f, 0.25f, 0.25f, 0.95f);        // #EF4444 Rejection Red
 
     [HideInInspector] public DraggablePhraseChip currentSlottedChip = null;
 
@@ -48,7 +53,7 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler
         DraggablePhraseChip chip = droppedObj.GetComponent<DraggablePhraseChip>();
         if (chip == null || chip.tokenData == null) return;
 
-        // 1. Category Validation: Ensure chip matches slot's required clinical stage
+        // 1. Category Validation: Ensure chip matches slot category
         if (chip.tokenData.category != targetCategory)
         {
             Debug.LogWarning($"[PhraseDropSlot] Category mismatch: Slot '{slotTitle}' requires {targetCategory}, but chip was {chip.tokenData.category}.");
@@ -71,13 +76,13 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler
             return false;
         }
 
-        // If slot is already occupied, return the old chip back to the pool
+        // If slot is already occupied, return old chip to its home bank
         if (currentSlottedChip != null && currentSlottedChip != newChip)
         {
             currentSlottedChip.ReturnToPool();
         }
 
-        // If chip was in another slot, clear that slot
+        // If new chip was in another slot, clear that slot
         if (newChip.currentSlot != null && newChip.currentSlot != this)
         {
             newChip.currentSlot.currentSlottedChip = null;
@@ -90,6 +95,18 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler
         UpdateVisualState();
         OnChipSlotted?.Invoke(this, newChip);
         return true;
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (currentSlottedChip != null)
+        {
+            currentSlottedChip.ReturnToPool();
+            if (PhraseDecisionMatrix.Instance != null)
+            {
+                PhraseDecisionMatrix.Instance.UpdateLivePreview();
+            }
+        }
     }
 
     public void ClearSlot()
@@ -106,9 +123,15 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler
             placeholderText.gameObject.SetActive(!IsOccupied);
         }
 
+        if (slotBackground != null)
+        {
+            slotBackground.color = normalBgColor;
+        }
+
         if (slotOutline != null)
         {
-            slotOutline.effectColor = IsOccupied ? hoverValidColor : normalBorderColor;
+            slotOutline.effectColor = IsOccupied ? occupiedBorderColor : normalBorderColor;
+            slotOutline.effectDistance = IsOccupied ? new Vector2(1.8f, -1.8f) : new Vector2(1f, -1f);
         }
     }
 

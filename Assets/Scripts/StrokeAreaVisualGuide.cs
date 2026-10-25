@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -196,19 +196,12 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         currentMistakeIndex = mistakeIndex;
         mistakeFlashTimer = (trackingManager != null) ? trackingManager.mistakeLockoutDuration : 1.25f;
 
-        if (sliders != null && mistakeIndex >= 0 && mistakeIndex < sliders.Length)
-        {
-            var slider = sliders[mistakeIndex];
-            if (slider != null)
-            {
-                slider.gameObject.SetActive(true);
-                slider.SetVisualState(SliderVisualState.Mistake, true);
-            }
-        }
+        // NOTE: Sliders DO NOT turn red! Only the VR Red POV effect flashes on mistakes.
+        // If the user fails 3 times on the active stroke, the active stroke slider will be revealed as a guide.
 
         if (activeStrokeMistakeCount >= mistakesRequiredForHint)
         {
-            Debug.Log($"[StrokeAreaVisualGuide] Hint Triggered on Stroke {currentActiveIndex + 1}! ({activeStrokeMistakeCount} mistakes made). Illuminating active stroke in bright glowing blue.");
+            Debug.Log($"[StrokeAreaVisualGuide] Hint Triggered on Stroke {currentActiveIndex + 1}! ({activeStrokeMistakeCount} mistakes made). Revealing active stroke slider as guide.");
         }
     }
 
@@ -273,71 +266,43 @@ public class StrokeAreaVisualGuide : MonoBehaviour
 
     /// <summary>
     /// Updates all 9 sliders:
-    /// - Test Mode (hideGuidesUnlessError = true): Guides are invisible during normal play, but if an error/mistake occurs,
-    ///   the mistaken zone immediately flashes in Glowing Neon Red so the student/tester sees where they made an error.
-    /// - Guided Mode (hideGuidesUnlessError = false): Full roadmap lines, direction arrows, and active highlights are visible.
+    /// - Normal memory testing mode: Sliders are invisible by default so the user must identify the anatomical zones from memory.
+    /// - Mistakes trigger ONLY the POV red flash in the VR headset (sliders never turn red).
+    /// - 3 Mistakes Rule: If the user fails 3 times on the active stroke, that stroke's slider guide is revealed in Glowing Sky Blue.
+    /// - Completed strokes: Slider guide disappears completely, leaving only applied betadine on the skin.
     /// </summary>
     private void UpdateVisuals()
     {
         if (sliders == null || sliders.Length == 0) return;
 
         bool isHoldingCotton = IsCottonInHandlingForceps();
-        bool isMistakeActive = (mistakeFlashTimer > 0f && currentMistakeIndex >= 0);
-        bool isHintActive = (activeStrokeMistakeCount >= mistakesRequiredForHint);
+        bool showActiveGuide = (activeStrokeMistakeCount >= mistakesRequiredForHint) && isHoldingCotton;
 
         for (int i = 0; i < sliders.Length; i++)
         {
             var slider = sliders[i];
             if (slider == null) continue;
 
-            // 1. Mistake feedback: ALWAYS flash Glowing Neon Red on the mistake zone regardless of test mode!
-            if (i == currentMistakeIndex && isMistakeActive)
+            // 1. Active Stroke Guide (only shown if failed 3 times and holding cotton)
+            if (i == currentActiveIndex && currentActiveIndex < 9)
             {
-                slider.gameObject.SetActive(true);
-                slider.SetVisualElementsVisible(true);
-                slider.SetVisualState(SliderVisualState.Mistake);
-                continue;
-            }
-
-            // 2. Completed strokes: Slider guide goes away completely, leaving only the applied betadine on the skin
-            if (i < currentActiveIndex)
-            {
-                slider.SetVisualElementsVisible(false);
-                slider.gameObject.SetActive(false);
-                continue;
-            }
-
-            // 3. Test Mode (Hide Guides Unless Error): Keep all roadmap lines and nodes completely invisible!
-            if (hideGuidesUnlessError)
-            {
-                slider.SetVisualElementsVisible(false);
-                slider.gameObject.SetActive(false);
-                continue;
-            }
-
-            // 4. Guided Mode: When forceps with cotton is held, show subtle roadmaps & hints
-            if (isHoldingCotton && currentActiveIndex < 9)
-            {
-                slider.gameObject.SetActive(true);
-                slider.SetVisualElementsVisible(true);
-
-                // Active target stroke with Hint active (after 3 mistakes): Glowing Sky Blue highlight
-                if (i == currentActiveIndex && isHintActive)
+                if (showActiveGuide)
                 {
+                    slider.gameObject.SetActive(true);
+                    slider.SetVisualElementsVisible(true);
                     slider.SetVisualState(SliderVisualState.Active);
                 }
-                // Default: All upcoming strokes look uniformly translucent blue (no hint)
                 else
                 {
-                    slider.SetVisualState(SliderVisualState.Upcoming);
+                    slider.SetVisualElementsVisible(false);
+                    slider.gameObject.SetActive(false);
                 }
+                continue;
             }
-            else
-            {
-                // Hide all slider guides when forceps with cotton is not held
-                slider.SetVisualElementsVisible(false);
-                slider.gameObject.SetActive(false);
-            }
+
+            // 2. All other strokes (completed or upcoming): Always hidden
+            slider.SetVisualElementsVisible(false);
+            slider.gameObject.SetActive(false);
         }
     }
 

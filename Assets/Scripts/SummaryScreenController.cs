@@ -242,7 +242,7 @@ public class SummaryScreenController : MonoBehaviour
         {
             var perinealMistakes = FilterMistakesByKeywords("wipe", "stroke", "cotton", "wash", "perineal", "iodine");
             p2MistakesListText.text = perinealMistakes.Count == 0
-                ? "<color=#34D399><b>✓ Flawless Antiseptic Technique!</b>\n• Strict top-to-bottom wiping maintained.\n• One cotton ball per stroke protocol verified.\n• Zero cross-contamination recorded.</color>"
+                ? "<color=#34D399><b>[OK] Flawless Antiseptic Technique!</b>\n• Strict top-to-bottom wiping maintained.\n• One cotton ball per stroke protocol verified.\n• Zero cross-contamination recorded.</color>"
                 : "<b>Clinical Perineal Deductions:</b>\n• " + string.Join("\n• ", perinealMistakes.ToArray());
         }
     }
@@ -305,7 +305,7 @@ public class SummaryScreenController : MonoBehaviour
 
             if (allMistakes.Count == 0)
             {
-                p4OverallMistakesListText.text = "<color=#34D399><b>✓ Zero Clinical Mistakes Logged!</b>\nCandidate executed the full 8-step protocol in accordance with clinical standards.</color>";
+                p4OverallMistakesListText.text = "<color=#34D399><b>[OK] Zero Clinical Mistakes Logged!</b>\nCandidate executed the full 8-step protocol in accordance with clinical standards.</color>";
             }
             else
             {

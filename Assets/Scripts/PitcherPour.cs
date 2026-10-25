@@ -1,16 +1,24 @@
 using UnityEngine;
 using System.Collections.Generic;
 
+/// <summary>
+/// Controls the Perineal Water Pitcher pour mechanics:
+/// - Tilting beyond threshold pours water from the calibrated SpoutOrigin.
+/// - Custom Scene View Gizmos allow 1-click manual positioning of the spout tip in Unity Editor.
+/// - Washes antiseptic / iodine puddles during Step 2 (Wash) and Step 4 (Rinse).
+/// </summary>
 public class PitcherPour : MonoBehaviour
 {
+    [Header("Manual Spout Calibration")]
+    [Tooltip("The exact physical point where water pours from. You can move and rotate this freely in Scene View!")]
+    public Transform spoutOrigin;
+
     [Header("Visual Settings")]
     public ParticleSystem waterParticleSystem;
     public float pourAngleThreshold = 45f; // Starts pouring when tilted 45 degrees
     public float emissionRate = 50f;       // How much water pours out
 
     [Header("Mechanical Settings")]
-    [Tooltip("Where the invisible cleaning raycast shoots from (e.g., the spout).")]
-    public Transform spoutOrigin;
     [Tooltip("How far down the water reaches to clean.")]
     public float pourDistance = 1.5f;
     [Tooltip("Radius of the water stream (matches visual particle stream).")]
@@ -28,6 +36,7 @@ public class PitcherPour : MonoBehaviour
     void Awake()
     {
         CachePuddles();
+        SyncParticleSystemToSpout();
     }
 
     void Start()
@@ -38,12 +47,38 @@ public class PitcherPour : MonoBehaviour
             emissionModule.rateOverTime = 0f;
         }
         CachePuddles();
+        SyncParticleSystemToSpout();
     }
 
     public void CachePuddles()
     {
-        var found = FindObjectsByType<WashableIodinePuddle>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        cachedPuddles = new List<WashableIodinePuddle>(found);
+        var root = GameObject.Find("Mother_Betadine_Puddles");
+        if (root != null)
+        {
+            cachedPuddles = new List<WashableIodinePuddle>(root.GetComponentsInChildren<WashableIodinePuddle>(true));
+        }
+        else
+        {
+            var found = FindObjectsByType<WashableIodinePuddle>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            cachedPuddles = new List<WashableIodinePuddle>(found);
+        }
+    }
+
+    void LateUpdate()
+    {
+        SyncParticleSystemToSpout();
+    }
+
+    private void SyncParticleSystemToSpout()
+    {
+        if (spoutOrigin != null && waterParticleSystem != null)
+        {
+            if (waterParticleSystem.transform.parent != spoutOrigin)
+            {
+                waterParticleSystem.transform.SetParent(spoutOrigin, false);
+            }
+            waterParticleSystem.transform.localPosition = Vector3.zero;
+        }
     }
 
     void Update()
@@ -85,9 +120,8 @@ public class PitcherPour : MonoBehaviour
 
     private void CastWaterRay()
     {
-        if (spoutOrigin == null) return;
-
-        Vector3 rayOrigin = spoutOrigin.position;
+        Transform originT = spoutOrigin != null ? spoutOrigin : transform;
+        Vector3 rayOrigin = originT.position;
         Vector3 rayDir = Vector3.down;
         Ray ray = new Ray(rayOrigin, rayDir);
         int hitCount = Physics.SphereCastNonAlloc(ray, waterStreamRadius, hitBuffer, pourDistance, ~0, QueryTriggerInteraction.Collide);
@@ -96,12 +130,17 @@ public class PitcherPour : MonoBehaviour
         bool hitMotherPerineum = false;
         Vector3 primaryHitPoint = rayOrigin + rayDir * pourDistance;
         float closestHitDist = float.MaxValue;
+        WashableIodinePuddle lastDirectPuddle = null;
 
         for (int i = 0; i < hitCount; i++)
         {
             Collider col = hitBuffer[i].collider;
             if (col == null) continue;
             GameObject go = col.gameObject;
+
+            // Ignore pitcher's own colliders
+            if (go == gameObject || go.transform.IsChildOf(transform)) continue;
+
             if (processedObjects.Contains(go)) continue;
             processedObjects.Add(go);
 
@@ -112,7 +151,7 @@ public class PitcherPour : MonoBehaviour
             }
 
             // Check if water hit mother anatomy / perineal zone
-            if (col.transform.root.name.Contains("Mother") || go.name.Contains("StrokeZone") || go.name.Contains("bodyfinal") || go.name.Contains("pelvis") || go.name.Contains("Perineal"))
+            if (col.transform.root.name.Contains("Mother") || col.transform.root.name.Contains("MODEL") || go.name.Contains("Mother") || go.name.Contains("StrokeZone") || go.name.Contains("bodyfinal") || go.name.Contains("pelvis") || go.name.Contains("Perineal"))
             {
                 hitMotherPerineum = true;
             }
@@ -124,10 +163,11 @@ public class PitcherPour : MonoBehaviour
             if (directPuddle != null)
             {
                 directPuddle.WashWithWater(Time.deltaTime);
+                lastDirectPuddle = directPuddle;
             }
         }
 
-        // Proximity wash for puddles (puddles in Mother_Betadine_Puddles do not require individual colliders)
+        // Proximity wash for puddles
         if (cachedPuddles == null || cachedPuddles.Count == 0) CachePuddles();
 
         if (cachedPuddles != null && cachedPuddles.Count > 0)
@@ -136,6 +176,7 @@ public class PitcherPour : MonoBehaviour
             {
                 var pud = cachedPuddles[p];
                 if (pud == null || !pud.isPuddleActive || pud.isFullyWashed) continue;
+                if (lastDirectPuddle != null && pud == lastDirectPuddle) continue; // Avoid double-washing in a single frame
 
                 Vector3 pudPos = pud.puddle75Object != null ? pud.puddle75Object.transform.position : pud.transform.position;
 
@@ -162,7 +203,7 @@ public class PitcherPour : MonoBehaviour
         {
             PerinealCareManager.Instance.cleaningProgressUI.ReportWashStep1(Time.deltaTime);
         }
-        // 2. Step 4: Antiseptic Water Rinse Progress (based on light-green puddles washed away)
+        // 2. Step 4: Antiseptic Water Rinse Progress
         else if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_4_ANTISEPTIC_RINSE)
         {
             if (cachedPuddles != null && cachedPuddles.Count > 0)
@@ -173,16 +214,35 @@ public class PitcherPour : MonoBehaviour
                 for (int p = 0; p < cachedPuddles.Count; p++)
                 {
                     var pud = cachedPuddles[p];
-                    if (pud != null)
+                    if (pud != null && (pud.isPuddleActive || pud.isFullyWashed))
                     {
                         activeCount++;
                         totalCleanliness += (1.0f - pud.GetRemainingOpacity());
                     }
                 }
 
-                float progress = activeCount > 0 ? (totalCleanliness / activeCount) : 1.0f;
+                float progress = activeCount > 0 ? (totalCleanliness / activeCount) : 0f;
                 PerinealCareManager.Instance.cleaningProgressUI.UpdateRinseProgress(progress);
             }
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Transform originT = spoutOrigin != null ? spoutOrigin : transform;
+        if (originT != null)
+        {
+            // Bright Cyan Wire Sphere at the exact spout origin point
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(originT.position, 0.012f);
+
+            // Forward direction vector ray (where spout is aimed)
+            Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.9f);
+            Gizmos.DrawRay(originT.position, originT.forward * 0.12f);
+
+            // Downward pour stream ray
+            Gizmos.color = new Color(0.1f, 0.5f, 1f, 0.5f);
+            Gizmos.DrawRay(originT.position, Vector3.down * pourDistance);
         }
     }
 }

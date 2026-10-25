@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -43,6 +43,7 @@ public class FloatingPokeDialogueUI : MonoBehaviour
     public Button summaryRestartButton;
 
     [Header("3-Slot Phrase Decision Matrix (Step 1)")]
+    public bool usePhraseDecisionMatrix = true;
     public PhraseDecisionMatrix phraseDecisionMatrix;
 
     [Header("Audio & Feedback")]
@@ -70,12 +71,19 @@ public class FloatingPokeDialogueUI : MonoBehaviour
             promptButton.onClick.RemoveAllListeners();
             promptButton.onClick.AddListener(OnPromptButtonClicked);
         }
+
+        if (phraseDecisionMatrix != null)
+        {
+            phraseDecisionMatrix.gameObject.SetActive(false);
+        }
     }
 
     public void ShowInitialPrompt()
     {
         isSetupTablePrompt = false;
         if (rootCanvasObject != null) rootCanvasObject.SetActive(true);
+
+        // Always display the 'Talk to the Mother' prompt button first
         if (promptContainer != null) promptContainer.SetActive(true);
         if (dialogueOptionsContainer != null) dialogueOptionsContainer.SetActive(false);
         if (responseContainer != null) responseContainer.SetActive(false);
@@ -315,7 +323,7 @@ public class FloatingPokeDialogueUI : MonoBehaviour
             return;
         }
 
-        if (phraseDecisionMatrix != null && (VRDemoGameManager.Instance == null || VRDemoGameManager.Instance.currentSimulationPhase == SimulationPhase.STEP_1_TALK_TO_MOTHER))
+        if (usePhraseDecisionMatrix && phraseDecisionMatrix != null && (VRDemoGameManager.Instance == null || VRDemoGameManager.Instance.currentSimulationPhase == SimulationPhase.STEP_1_TALK_TO_MOTHER))
         {
             if (promptContainer != null) promptContainer.SetActive(false);
             if (responseContainer != null) responseContainer.SetActive(false);

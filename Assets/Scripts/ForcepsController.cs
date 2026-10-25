@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
@@ -77,11 +77,17 @@ public class ForcepsController : MonoBehaviour
         if (forcepsGrabInteractable != null)
         {
             forcepsGrabInteractable.trackScale = false;
+            // Lock forceps rigidly into player's hand with zero wobble or lag
+            forcepsGrabInteractable.movementType = XRBaseInteractable.MovementType.Instantaneous;
+            forcepsGrabInteractable.attachEaseInTime = 0f;
+            forcepsGrabInteractable.smoothPosition = false;
+            forcepsGrabInteractable.smoothRotation = false;
         }
 
         if (cottonSocket != null)
         {
             cottonSocket.showInteractableHoverMeshes = false;
+            cottonSocket.socketActive = HasCotton;
             if (cottonSocket.interactionManager == null)
             {
                 cottonSocket.interactionManager = FindAnyObjectByType<XRInteractionManager>();
@@ -107,6 +113,10 @@ public class ForcepsController : MonoBehaviour
         if (forcepsGrabInteractable != null)
         {
             forcepsGrabInteractable.trackScale = false;
+            forcepsGrabInteractable.movementType = XRBaseInteractable.MovementType.Instantaneous;
+            forcepsGrabInteractable.attachEaseInTime = 0f;
+            forcepsGrabInteractable.smoothPosition = false;
+            forcepsGrabInteractable.smoothRotation = false;
             forcepsGrabInteractable.selectEntered.AddListener(OnForcepsGrabbed);
             forcepsGrabInteractable.selectExited.AddListener(OnForcepsReleased);
         }
@@ -114,6 +124,7 @@ public class ForcepsController : MonoBehaviour
         // Listen for cotton entering/leaving THIS forceps' socket, to track who holds it
         if (cottonSocket != null)
         {
+            cottonSocket.socketActive = HasCotton;
             cottonSocket.selectEntered.AddListener(OnCottonSocketed);
             cottonSocket.selectExited.AddListener(OnCottonUnsocketed);
         }
@@ -143,6 +154,27 @@ public class ForcepsController : MonoBehaviour
         {
             CottonState cotton = args.interactableObject.transform.GetComponent<CottonState>();
             if (cotton != null) cotton.SetHolder(role);
+
+            // Ignore collision between forceps colliders and the socketed cotton ball
+            Collider cottonCol = args.interactableObject.transform.GetComponent<Collider>();
+            if (cottonCol != null)
+            {
+                Collider[] myCols = GetComponentsInChildren<Collider>(true);
+                foreach (var fc in myCols)
+                {
+                    if (fc != null && fc != cottonCol)
+                    {
+                        Physics.IgnoreCollision(fc, cottonCol, true);
+                    }
+                }
+            }
+
+            // Disable gravity on cotton ball while clamped to prevent fighting socket velocity tracking
+            Rigidbody rb = args.interactableObject.transform.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.useGravity = false;
+            }
         }
     }
 
@@ -152,6 +184,13 @@ public class ForcepsController : MonoBehaviour
         {
             CottonState cotton = args.interactableObject.transform.GetComponent<CottonState>();
             if (cotton != null) cotton.SetHolder(null);
+
+            // Restore gravity upon release
+            Rigidbody rb = args.interactableObject.transform.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.useGravity = true;
+            }
         }
     }
 
@@ -162,7 +201,18 @@ public class ForcepsController : MonoBehaviour
 
         if (handName.Contains("LEFT")) isHeldByLeftHand = true;
         else if (handName.Contains("RIGHT")) isHeldByRightHand = true;
-        else Debug.LogWarning("[Forceps] Could not determine hand from interactor: " + t.name);
+        else
+        {
+            isHeldByRightHand = true;
+            Debug.Log("[Forceps] Grabbed by " + t.name);
+        }
+
+        // Lock kinematic while held in hand to guarantee zero physics wobble/deflection
+        var rb = GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+        }
     }
 
     private string FindHandName(Transform t)
@@ -186,6 +236,32 @@ public class ForcepsController : MonoBehaviour
         // If the player drops the forceps, automatically drop the cotton too
         DropCotton();
         if (cottonSocket != null) cottonSocket.socketActive = false;
+
+        if (role == ForcepsRole.Handling)
+        {
+            var tool = GetComponent<ToolItem>();
+            if (tool != null)
+            {
+                if (tool.IsLockedOnTable2)
+                {
+                    tool.TeleportToTable2();
+                }
+                else
+                {
+                    tool.TeleportToHome();
+                }
+            }
+        }
+        else
+        {
+            // Restore physics when released in midair for other forceps
+            var rb = GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.useGravity = true;
+            }
+        }
     }
 
     private void Update()
@@ -205,50 +281,99 @@ public class ForcepsController : MonoBehaviour
         }
 
         // Only run logic if the forceps are actually being held
-        if (!isHeldByLeftHand && !isHeldByRightHand) return;
+        if (!IsGrabbed && !isHeldByLeftHand && !isHeldByRightHand) return;
 
         bool isPressingButton = false;
+        bool aPressed = rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.IsPressed();
+        bool xPressed = leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.IsPressed();
 
-        // Check if the active hand is holding down its specific button
-        if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action.IsPressed())
+        if (aPressed || xPressed)
         {
             isPressingButton = true;
         }
-        else if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action.IsPressed())
-        {
-            isPressingButton = true;
-        }
 
-        // Logic: Socket is only active while the button is held
-        if (isPressingButton)
+        // -------------------------------------------------------------
+        // ROLE 1: PICKUP FORCEPS
+        // -------------------------------------------------------------
+        if (role == ForcepsRole.Pickup)
         {
-            if (cottonSocket != null) cottonSocket.socketActive = true;
-
-            // Jar spawning is Pickup Forceps only
-            if (role == ForcepsRole.Pickup && isInJarZone && !HasCotton && !isSpawning)
+            // Inside the jar zone: holding button extracts cotton
+            if (isInJarZone && isPressingButton && !HasCotton && !isSpawning)
             {
                 SpawnCotton();
             }
 
-            // Transfer: if this socket is empty and the OTHER forceps' socket is holding
-            // cotton, and the two tips are close enough, steal it into this socket.
+            // Securely retain cotton once picked up so player can carry it to Handling Forceps without falling
+            if (HasCotton && cottonSocket != null)
+            {
+                cottonSocket.socketActive = true;
+            }
+        }
+        // -------------------------------------------------------------
+        // ROLE 2: HANDLING FORCEPS
+        // -------------------------------------------------------------
+        else if (role == ForcepsRole.Handling)
+        {
+            // Keep socket inactive whenever it doesn't hold cotton so it cannot passively attract cotton as a magnet!
+            if (!HasCotton && cottonSocket != null && cottonSocket.socketActive)
+            {
+                cottonSocket.socketActive = false;
+            }
+
+            // TRANSFER LOGIC: Only happens when Handling Forceps has no cotton, Pickup Forceps HAS cotton,
+            // tips are in range (<= transferDistance), AND player explicitly PRESSES Button A (WasPressedThisFrame)!
+            // It will NEVER transfer automatically like a magnet just by being close!
             if (!HasCotton && otherForceps != null && otherForceps.HasCotton && cottonSocket != null && otherForceps.cottonSocket != null)
             {
                 float distance = Vector3.Distance(cottonSocket.transform.position, otherForceps.cottonSocket.transform.position);
                 if (distance <= transferDistance)
                 {
-                    TryStealCotton();
+                    bool transferPressed = false;
+                    if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action != null)
+                        transferPressed = rightPrimaryButton.action.WasPressedThisFrame();
+                    else if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action != null)
+                        transferPressed = leftPrimaryButton.action.WasPressedThisFrame();
+                    else
+                    {
+                        bool a = (rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.WasPressedThisFrame());
+                        bool x = (leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.WasPressedThisFrame());
+                        transferPressed = a || x;
+                    }
+
+                    if (transferPressed)
+                    {
+                        TryStealCotton();
+                    }
                 }
             }
-        }
-        else
-        {
-            // The moment they let go of the button, drop the cotton and turn off the magnet
+
+            // Clamping while holding cotton:
+            // Holding Button A keeps the cotton firmly clamped during wiping.
+            // Letting go of Button A drops the cotton into the waste basin.
             if (HasCotton)
             {
-                DropCotton();
+                bool holdClamped = false;
+                if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action != null)
+                    holdClamped = rightPrimaryButton.action.IsPressed();
+                else if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action != null)
+                    holdClamped = leftPrimaryButton.action.IsPressed();
+                else
+                {
+                    bool a = (rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.IsPressed());
+                    bool x = (leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.IsPressed());
+                    holdClamped = a || x;
+                }
+
+                if (holdClamped)
+                {
+                    if (cottonSocket != null) cottonSocket.socketActive = true;
+                }
+                else
+                {
+                    DropCotton();
+                    if (cottonSocket != null) cottonSocket.socketActive = false;
+                }
             }
-            if (cottonSocket != null) cottonSocket.socketActive = false;
         }
     }
 
@@ -264,18 +389,41 @@ public class ForcepsController : MonoBehaviour
 
         // Spawn the cotton exactly inside the socket
         GameObject newCotton = Instantiate(cottonPrefab, cottonSocket.transform.position, cottonSocket.transform.rotation);
+        
+        // Ignore collision between forceps colliders and the new cotton ball
+        Collider cottonCol = newCotton.GetComponent<Collider>();
+        if (cottonCol != null)
+        {
+            Collider[] myCols = GetComponentsInChildren<Collider>(true);
+            foreach (var fc in myCols)
+            {
+                if (fc != null && fc != cottonCol)
+                {
+                    Physics.IgnoreCollision(fc, cottonCol, true);
+                }
+            }
+        }
+
+        // Immediately attach to socket via XRInteractionManager so it never drops
+        var grabInteractable = newCotton.GetComponent<XRGrabInteractable>();
+        if (grabInteractable != null && cottonSocket != null && cottonSocket.interactionManager != null)
+        {
+            cottonSocket.socketActive = true;
+            cottonSocket.interactionManager.SelectEnter((IXRSelectInteractor)cottonSocket, (IXRSelectInteractable)grabInteractable);
+        }
+
         CottonState cottonState = newCotton.GetComponent<CottonState>();
         if (cottonState != null && activeJarZone != null)
         {
             cottonState.SoakCotton(activeJarZone.soakedMaterial, activeJarZone.antisepticType);
-            Debug.Log($"[Forceps] Spawned pre-soaked cotton with {activeJarZone.antisepticType} from jar.");
+            Debug.Log($"[Forceps] Spawned and clamped pre-soaked cotton with {activeJarZone.antisepticType} from jar.");
         }
         else
         {
-            Debug.Log("[Forceps] New cotton spawned from the jar.");
+            Debug.Log("[Forceps] New cotton spawned and clamped from the jar.");
         }
 
-        // Wait half a second before allowing another spawn, giving the XRI socket time to attach
+        // Wait half a second before allowing another spawn
         Invoke(nameof(ResetSpawnCooldown), 0.5f);
     }
 
@@ -301,12 +449,30 @@ public class ForcepsController : MonoBehaviour
 
             // Force socket reset on the donor forceps so it is completely clean
             otherForceps.DropCotton();
+            if (otherForceps.cottonSocket != null) otherForceps.cottonSocket.socketActive = false;
 
             // ...then pull it into this socket.
             cottonSocket.interactionManager.SelectEnter(
                 (IXRSelectInteractor)cottonSocket, cottonInteractable);
 
-            Debug.Log($"[Forceps] Cotton transferred: {otherForceps.role} -> {role}");
+            // Ignore collision with this forceps
+            if (cottonInteractable.transform != null)
+            {
+                Collider cottonCol = cottonInteractable.transform.GetComponent<Collider>();
+                if (cottonCol != null)
+                {
+                    Collider[] myCols = GetComponentsInChildren<Collider>(true);
+                    foreach (var fc in myCols)
+                    {
+                        if (fc != null && fc != cottonCol)
+                        {
+                            Physics.IgnoreCollision(fc, cottonCol, true);
+                        }
+                    }
+                }
+            }
+
+            Debug.Log($"[Forceps] Cotton transferred: {otherForceps.role} -> {role} via Button A press.");
         }
     }
 
@@ -319,9 +485,18 @@ public class ForcepsController : MonoBehaviour
                 var list = new System.Collections.Generic.List<IXRSelectInteractable>(cottonSocket.interactablesSelected);
                 foreach (var cotton in list)
                 {
-                    if (cotton != null && cottonSocket.interactionManager != null)
+                    if (cotton != null)
                     {
-                        cottonSocket.interactionManager.SelectCancel((IXRSelectInteractor)cottonSocket, cotton);
+                        if (cotton.transform != null)
+                        {
+                            Rigidbody rb = cotton.transform.GetComponent<Rigidbody>();
+                            if (rb != null) rb.useGravity = true;
+                        }
+
+                        if (cottonSocket.interactionManager != null)
+                        {
+                            cottonSocket.interactionManager.SelectCancel((IXRSelectInteractor)cottonSocket, cotton);
+                        }
                     }
                 }
             }

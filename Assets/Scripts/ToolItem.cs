@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
@@ -46,6 +46,7 @@ public class ToolItem : MonoBehaviour
 
     // Static registry to prevent tools from colliding with / bumping each other or player
     private static HashSet<ToolItem> allToolsInScene = new HashSet<ToolItem>();
+    public static IEnumerable<ToolItem> AllToolsInScene => allToolsInScene;
     private Collider[] myColliders;
 
     private void Awake()
@@ -83,7 +84,14 @@ public class ToolItem : MonoBehaviour
             savedColors[r] = cols;
         }
 
-        homeScale = transform.localScale;
+        if (transform.localScale.sqrMagnitude > 0.000001f)
+        {
+            homeScale = transform.localScale;
+        }
+        else if (homeScale.sqrMagnitude <= 0.000001f)
+        {
+            homeScale = Vector3.one;
+        }
         initialParent = transform.parent;
 
         var grabTransformers = GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Transformers.XRGeneralGrabTransformer>(true);
@@ -132,11 +140,27 @@ public class ToolItem : MonoBehaviour
                 }
             }
 
+            bool isForceps = GetComponent<ForcepsController>() != null || 
+                             (!string.IsNullOrEmpty(toolID) && toolID.ToLower().Contains("forceps")) || 
+                             gameObject.name.ToLower().Contains("forceps");
+
             grab.useDynamicAttach = false;
             grab.matchAttachPosition = true;
             grab.matchAttachRotation = true;
-            grab.attachEaseInTime = 0.12f;
-            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+
+            if (isForceps)
+            {
+                // Lock forceps rigidly into player's hand with zero wobble or lag
+                grab.attachEaseInTime = 0f;
+                grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
+                grab.smoothPosition = false;
+                grab.smoothRotation = false;
+            }
+            else
+            {
+                grab.attachEaseInTime = 0.12f;
+                grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+            }
 
             SetupHandAttachPoint();
         }
@@ -267,7 +291,20 @@ public class ToolItem : MonoBehaviour
         handAttachPoint.localRotation = Quaternion.Euler(attachEulerAngles);
     }
 
-    public Vector3 HomeScale => homeScale;
+    public Vector3 HomeScale => (homeScale.sqrMagnitude > 0.000001f)
+        ? homeScale
+        : (transform.localScale.sqrMagnitude > 0.000001f ? transform.localScale : Vector3.one);
+
+    public void CacheHomeTransformsNow()
+    {
+        homePos = transform.position;
+        homeRot = transform.rotation;
+        if (transform.localScale.sqrMagnitude > 0.000001f)
+        {
+            homeScale = transform.localScale;
+        }
+        initialParent = transform.parent;
+    }
     public Vector3 HomePos => homePos;
     public Quaternion HomeRot => homeRot;
     public Transform InitialParent => initialParent;
@@ -283,7 +320,14 @@ public class ToolItem : MonoBehaviour
     {
         homePos = transform.position;
         homeRot = transform.rotation;
-        homeScale = transform.localScale;
+        if (transform.localScale.sqrMagnitude > 0.000001f)
+        {
+            homeScale = transform.localScale;
+        }
+        else if (homeScale.sqrMagnitude <= 0.000001f)
+        {
+            homeScale = Vector3.one;
+        }
         initialParent = transform.parent;
 
         EnsureInteractableAndAttachPoint();
@@ -306,7 +350,13 @@ public class ToolItem : MonoBehaviour
             GameObject sockObj = new GameObject($"{gameObject.name}_Table1Socket");
             sockObj.transform.position = homePos;
             sockObj.transform.rotation = homeRot;
-            if (transform.parent != null) sockObj.transform.SetParent(transform.parent, true);
+            if (transform.parent != null)
+            {
+                sockObj.transform.SetParent(transform.parent, false);
+                sockObj.transform.position = homePos;
+                sockObj.transform.rotation = homeRot;
+                sockObj.transform.localScale = Vector3.one;
+            }
 
             table1Socket = sockObj.AddComponent<ToolReturnSocket>();
             table1Socket.targetTool = this;
@@ -409,12 +459,23 @@ public class ToolItem : MonoBehaviour
             CancelDropTimer();
         }
 
-        // Enable dynamic physics while held by player hand with continuous anti-tunneling
+        bool isForceps = GetComponent<ForcepsController>() != null || 
+                         (!string.IsNullOrEmpty(toolID) && toolID.ToLower().Contains("forceps")) || 
+                         gameObject.name.ToLower().Contains("forceps");
+
+        // Keep forceps kinematic while held to guarantee zero physics wobble/deflection in hand
         if (rb != null)
         {
-            rb.isKinematic = false;
-            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            if (isForceps)
+            {
+                rb.isKinematic = true;
+            }
+            else
+            {
+                rb.isKinematic = false;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                rb.interpolation = RigidbodyInterpolation.Interpolate;
+            }
         }
 
         // Check if player tries to use/grab any tool before talking to mother in Step 1
@@ -469,6 +530,23 @@ public class ToolItem : MonoBehaviour
             // Snapped cleanly into socket -> Safe return with 0 penalty!
             CancelDropTimer();
             bestSocket.SnapTool(this);
+            return;
+        }
+
+        bool isHandlingForceps = (GetComponent<ForcepsController>() != null && GetComponent<ForcepsController>().role == ForcepsRole.Handling) ||
+                                 gameObject.name.ToLower().Contains("handling");
+
+        if (isHandlingForceps)
+        {
+            CancelDropTimer();
+            if (isLockedOnTable2)
+            {
+                WarpToTable2();
+            }
+            else
+            {
+                WarpHome();
+            }
             return;
         }
 
@@ -536,17 +614,6 @@ public class ToolItem : MonoBehaviour
         table2Pos = slotPos;
         table2Rot = slotRot;
 
-        // Ensure Table 2 has a return socket for this tool
-        if (table2Socket == null)
-        {
-            GameObject sockObj = new GameObject($"{gameObject.name}_Table2Socket");
-            sockObj.transform.position = table2Pos;
-            sockObj.transform.rotation = table2Rot;
-            table2Socket = sockObj.AddComponent<ToolReturnSocket>();
-            table2Socket.targetTool = this;
-            table2Socket.targetToolID = toolID;
-        }
-
         // Lock kinematic on Table 2 so it won't move when player gets near
         if (rb != null)
         {
@@ -554,16 +621,36 @@ public class ToolItem : MonoBehaviour
             rb.isKinematic = true;
         }
 
-        transform.localScale = homeScale;
+        if (homeScale.sqrMagnitude > 0.000001f)
+            transform.localScale = homeScale;
 
         // Re-enable grab in case a reject coroutine disabled it
         if (grab != null)
             grab.enabled = true;
 
+        // Keep natural appearance while placed - green tint only applied upon confirmation!
+    }
+
+    public void MarkConfirmedCorrect()
+    {
         Tint(new Color(0.3f, 1f, 0.3f));
     }
 
-    // ── Wrong Placement ──
+    public void LockPermanentlyOnTable()
+    {
+        isLockedOnTable2 = true;
+        if (rb != null)
+        {
+            SafeResetVelocity(rb);
+            rb.isKinematic = true;
+        }
+        if (grab != null)
+        {
+            grab.enabled = false;
+        }
+    }
+
+    // Wrong Placement
 
     public void HandleWrongPlacement(XRSocketInteractor socket, float redDuration)
     {
@@ -622,7 +709,8 @@ public class ToolItem : MonoBehaviour
             grab.enabled = true;
 
         yield return null;
-        transform.localScale = homeScale;
+        if (homeScale.sqrMagnitude > 0.000001f)
+            transform.localScale = homeScale;
 
         isBeingRejected = false;
         rejectCo = null;
@@ -630,7 +718,11 @@ public class ToolItem : MonoBehaviour
 
     // ── Warp ──
 
-    private void WarpToTable2()
+    public bool IsLockedOnTable2 => isLockedOnTable2;
+    public void TeleportToTable2() => WarpToTable2();
+    public void TeleportToHome() => WarpHome();
+
+    public void WarpToTable2()
     {
         if (rb != null)
         {
@@ -640,7 +732,8 @@ public class ToolItem : MonoBehaviour
 
         transform.position = table2Pos;
         transform.rotation = table2Rot;
-        transform.localScale = homeScale; // Assuming original scale is desired
+        if (homeScale.sqrMagnitude > 0.000001f)
+            transform.localScale = homeScale; // Assuming original scale is desired
 
         if (rb != null)
         {
@@ -652,7 +745,7 @@ public class ToolItem : MonoBehaviour
         Physics.SyncTransforms();
     }
 
-    private void WarpHome()
+    public void WarpHome()
     {
         isLockedOnTable2 = false;
 
@@ -667,9 +760,16 @@ public class ToolItem : MonoBehaviour
             transform.SetParent(initialParent, true);
         }
 
-        transform.position = homePos;
-        transform.rotation = homeRot;
-        transform.localScale = homeScale;
+        if (homePos != Vector3.zero || homeRot != Quaternion.identity)
+        {
+            transform.position = homePos;
+            transform.rotation = homeRot;
+        }
+
+        if (homeScale.sqrMagnitude > 0.000001f)
+        {
+            transform.localScale = homeScale;
+        }
 
         if (rb != null)
         {
@@ -678,6 +778,7 @@ public class ToolItem : MonoBehaviour
             rb.isKinematic = true; // Lock kinematic resting on Table 1
         }
 
+        RestoreColors();
         Physics.SyncTransforms();
     }
 

@@ -117,24 +117,24 @@ public class MayoStandDrapeSocket : MonoBehaviour
 
     private void OnTriggerStay(Collider other)
     {
-        // 1. Tool Hazard Check: If player attempts to place an instrument on bare Mayo stand
-        if (!isDraped)
-        {
-            var tool = other.GetComponent<ToolItem>()
-                    ?? other.GetComponentInParent<ToolItem>()
-                    ?? other.GetComponentInChildren<ToolItem>();
+        bool draped = isDraped || (TablePrepManager.Instance != null && TablePrepManager.Instance.isMayoDraped);
+        if (draped) return; // Mayo Stand is draped with sterile linen, completely sterile!
 
-            if (tool != null && !tool.toolID.ToLower().Contains("linen"))
+        // 1. Tool Hazard Check: If player attempts to place an instrument on bare Mayo stand
+        var tool = other.GetComponent<ToolItem>()
+                ?? other.GetComponentInParent<ToolItem>()
+                ?? other.GetComponentInChildren<ToolItem>();
+
+        if (tool != null && !tool.toolID.ToLower().Contains("linen"))
+        {
+            if (VRHeadsetVisualFeedback.Instance != null)
             {
-                if (VRHeadsetVisualFeedback.Instance != null)
-                {
-                    VRHeadsetVisualFeedback.Instance.TriggerUnsterileMayoViolation(tool.toolID);
-                }
-                return;
+                VRHeadsetVisualFeedback.Instance.TriggerUnsterileMayoViolation(tool.toolID);
             }
+            return;
         }
 
-        if (!isSocketActive || isDraped) return;
+        if (!isSocketActive) return;
 
         // 2. Linen Detection
         GameObject linenObj = GetLinenObject(other);

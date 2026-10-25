@@ -334,26 +334,26 @@ public class StrokeTrackingManager : MonoBehaviour
             // 1. Fresh Stroke Initiation:
             if (currentStrokeProgress <= 0.01f)
             {
-                // Player touches near Start Point / Top half (t <= 0.45) -> Initialize downward wipe!
-                if (rawT <= 0.45f)
+                // Player touches near Start Point / Top section (t <= 0.35) -> Initialize downward wipe!
+                if (rawT <= 0.35f)
                 {
                     currentStrokeProgress = Mathf.Max(0.05f, clampedT);
                     Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
                     OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
                 }
-                // If player touches near End Point / Bottom (t >= 0.60) before starting at top -> Wrong direction attempt!
-                else if (rawT >= 0.60f)
+                // If player touches near End Point / Bottom (t >= 0.55) before starting at top -> Wrong direction attempt!
+                else if (rawT >= 0.55f)
                 {
-                    HandleMistakeTouch(touchPos, currentStrokeIndex, "Incorrect technique! Wipe downward from top to bottom only.");
+                    HandleMistakeTouch(touchPos, currentStrokeIndex, "Incorrect technique! Start at the top and wipe downward.");
                 }
             }
             // 2. Stroke In Progress:
             else
             {
-                // Advancing downward towards End Point
+                // Advancing downward towards End Point with smooth realistic pacing (~0.8s full swipe)
                 if (clampedT > currentStrokeProgress)
                 {
-                    currentStrokeProgress = clampedT;
+                    currentStrokeProgress = Mathf.MoveTowards(currentStrokeProgress, clampedT, Time.deltaTime * 1.2f);
                     Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
                     OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
 
@@ -417,6 +417,11 @@ public class StrokeTrackingManager : MonoBehaviour
         if (mistakeZoneIndex >= 0)
         {
             OnMistakeZoneTriggered?.Invoke(mistakeZoneIndex);
+        }
+
+        if (VRHeadsetVisualFeedback.Instance != null)
+        {
+            VRHeadsetVisualFeedback.Instance.TriggerMistakeFlash(1.2f);
         }
 
         if (PerinealCareManager.Instance != null)

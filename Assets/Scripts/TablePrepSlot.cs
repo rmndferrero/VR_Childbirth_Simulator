@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// Represents one of the tool placement slots on Table 2 (Mayo stand).
@@ -37,8 +37,15 @@ public class TablePrepSlot : MonoBehaviour
     [Header("Visual Circle Plate Ghost (No Hint)")]
     public GameObject ghostPlateObject;
     public Material ghostMaterial;
+    [Tooltip("Material used when player is hovering a tool over this slot.")]
+    public Material activeCircleMat;
+    [Tooltip("Material used when this slot is idle/waiting.")]
+    public Material inactiveCircleMat;
     [Tooltip("Scale of the circular holographic plate (X/Z diameter, Y thickness).")]
     public Vector3 ghostPlateSize = new Vector3(0.09f, 0.002f, 0.09f);
+
+    private MeshRenderer plateRenderer;
+    private bool isHovered = false;
 
     [Header("State")]
     public bool isFilled = false;
@@ -61,6 +68,37 @@ public class TablePrepSlot : MonoBehaviour
         HideGhost();
     }
 
+    public void SetHoverState(bool hovered, bool showCircle)
+    {
+        isHovered = hovered;
+
+        if (isFilled || !showCircle)
+        {
+            if (ghostPlateObject != null && ghostPlateObject.activeSelf)
+                ghostPlateObject.SetActive(false);
+            return;
+        }
+
+        if (ghostPlateObject != null && !ghostPlateObject.activeSelf)
+            ghostPlateObject.SetActive(true);
+
+        if (plateRenderer == null && ghostPlateObject != null)
+        {
+            plateRenderer = ghostPlateObject.GetComponent<MeshRenderer>();
+        }
+
+        if (plateRenderer != null)
+        {
+            if (hovered && activeCircleMat != null)
+            {
+                plateRenderer.material = activeCircleMat;
+            }
+            else if (!hovered && inactiveCircleMat != null)
+            {
+                plateRenderer.material = inactiveCircleMat;
+            }
+        }
+    }
     public Vector3 GetTargetSnapPosition()
     {
         if (customSnapPoint != null) return customSnapPoint.position;
@@ -127,14 +165,14 @@ public class TablePrepSlot : MonoBehaviour
 
     private void LoadGhostMaterialIfNull()
     {
-        if (ghostMaterial == null)
-        {
 #if UNITY_EDITOR
-            ghostMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Active_Mat.mat")
-                         ?? UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Inactive_Mat.mat")
-                         ?? UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Drape_Ghost_Mat.mat");
+        if (inactiveCircleMat == null)
+            inactiveCircleMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Inactive_Mat.mat");
+        if (activeCircleMat == null)
+            activeCircleMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Zone_Guide_Blue_Active_Mat.mat");
+        if (ghostMaterial == null)
+            ghostMaterial = inactiveCircleMat != null ? inactiveCircleMat : activeCircleMat;
 #endif
-        }
     }
 
     public bool CanAccept(ToolItem tool)
@@ -142,6 +180,18 @@ public class TablePrepSlot : MonoBehaviour
         if (tool == null) return false;
         if (assignedTool != null && tool == assignedTool) return true;
         if (!string.IsNullOrEmpty(assignedToolID) && assignedToolID.Equals(tool.toolID, System.StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Forceps compatibility: Accept Handling Forceps, TongueForceps, and Thumb_Forceps for forceps slots
+        string slotId = (assignedToolID ?? "").ToLower();
+        string toolId = (tool.toolID ?? "").ToLower();
+        string toolName = tool.gameObject.name.ToLower();
+
+        if ((slotId.Contains("forceps") || slotId.Contains("forcep")) &&
+            (toolId.Contains("forceps") || toolId.Contains("forcep") || toolName.Contains("forceps")))
+        {
+            return true;
+        }
+
         return false;
     }
 
@@ -193,6 +243,9 @@ public class TablePrepSlot : MonoBehaviour
     {
         isFilled = false;
         currentPlacedTool = null;
+        isHovered = false;
+        if (plateRenderer != null && inactiveCircleMat != null)
+            plateRenderer.material = inactiveCircleMat;
         ShowGhost();
     }
 

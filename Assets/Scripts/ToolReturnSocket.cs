@@ -102,51 +102,42 @@ public class ToolReturnSocket : MonoBehaviour
 
         LoadGhostMaterialIfNull();
 
-        GameObject ghost = new GameObject($"{targetTool.name}_ReturnGhost");
-        ghost.transform.SetParent(root, false);
+        // Exact clone of the target tool to maintain identical multi-child hierarchies and scale factors
+        GameObject ghost = Instantiate(targetTool.gameObject, root);
+        ghost.name = $"{targetTool.name}_ReturnGhost";
         ghost.transform.localPosition = snapPositionOffset;
         ghost.transform.localRotation = Quaternion.Euler(snapEulerAngles);
-        ghost.transform.localScale = Vector3.one;
+        ghost.transform.localScale = targetTool.transform.localScale;
 
-        // Clone mesh filters and renderers from the target tool
-        var sourceRenderers = targetTool.GetComponentsInChildren<MeshRenderer>(true);
-        foreach (var sr in sourceRenderers)
+        // Strip non-visual components
+        var scripts = ghost.GetComponentsInChildren<MonoBehaviour>(true);
+        foreach (var s in scripts) DestroyImmediate(s);
+        var colliders = ghost.GetComponentsInChildren<Collider>(true);
+        foreach (var c in colliders) DestroyImmediate(c);
+        var rigidbodies = ghost.GetComponentsInChildren<Rigidbody>(true);
+        foreach (var r in rigidbodies) DestroyImmediate(r);
+        var audioSources = ghost.GetComponentsInChildren<AudioSource>(true);
+        foreach (var a in audioSources) DestroyImmediate(a);
+
+        // Apply ghost holographic material to all renderers
+        var sourceRenderers = ghost.GetComponentsInChildren<MeshRenderer>(true);
+        foreach (var mr in sourceRenderers)
         {
-            if (sr == null) continue;
-            var mf = sr.GetComponent<MeshFilter>();
-            if (mf == null || mf.sharedMesh == null) continue;
-
-            GameObject ghostPart = new GameObject(sr.gameObject.name + "_GhostPart");
-            ghostPart.transform.SetParent(ghost.transform, false);
-
-            // Compute relative transform
-            Vector3 relPos = targetTool.transform.InverseTransformPoint(sr.transform.position);
-            Quaternion relRot = Quaternion.Inverse(targetTool.transform.rotation) * sr.transform.rotation;
-            Vector3 relScale = sr.transform.localScale;
-
-            ghostPart.transform.localPosition = relPos;
-            ghostPart.transform.localRotation = relRot;
-            ghostPart.transform.localScale = relScale;
-
-            var newMf = ghostPart.AddComponent<MeshFilter>();
-            newMf.sharedMesh = mf.sharedMesh;
-
-            var newMr = ghostPart.AddComponent<MeshRenderer>();
-            newMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            newMr.receiveShadows = false;
+            if (mr == null) continue;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
 
             if (ghostMaterial != null)
             {
-                Material[] ghostMats = new Material[sr.sharedMaterials.Length];
+                Material[] ghostMats = new Material[mr.sharedMaterials.Length];
                 for (int m = 0; m < ghostMats.Length; m++) ghostMats[m] = ghostMaterial;
-                newMr.materials = ghostMats;
+                mr.materials = ghostMats;
             }
         }
 
         blueGhostObject = ghost;
         blueGhostObject.SetActive(false);
     }
-
     private void Update()
     {
         if (targetTool == null) return;

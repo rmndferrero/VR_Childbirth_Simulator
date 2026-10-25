@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -111,8 +111,12 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         // Keep Vignette locked directly to camera orientation
         if (vignetteCanvasObj != null)
         {
-            vignetteCanvasObj.transform.position = targetCamera.transform.position + targetCamera.transform.forward * 0.28f;
-            vignetteCanvasObj.transform.rotation = targetCamera.transform.rotation;
+            if (vignetteCanvasObj.transform.parent != targetCamera.transform)
+            {
+                vignetteCanvasObj.transform.SetParent(targetCamera.transform, false);
+            }
+            vignetteCanvasObj.transform.localPosition = new Vector3(0f, 0f, 0.12f);
+            vignetteCanvasObj.transform.localRotation = Quaternion.identity;
         }
     }
 
@@ -183,6 +187,16 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         EnsureVignetteOverlayExists();
         if (vignetteCoroutine != null) StopCoroutine(vignetteCoroutine);
         vignetteCoroutine = StartCoroutine(RedVignetteRoutine(duration));
+    }
+
+    /// <summary>
+    /// Flashes the POV red vignette border, plays warning buzzer audio, and pulses controller haptics on clinical mistakes.
+    /// </summary>
+    public void TriggerMistakeFlash(float duration = 1.2f)
+    {
+        FlashRedVignette(duration);
+        PlayWarningAudio();
+        SendHapticsToControllers(0.6f, 0.35f);
     }
 
     private IEnumerator RedVignetteRoutine(float duration)
@@ -295,11 +309,23 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
     {
         if (vignetteCanvasObj != null) return;
 
+        if (targetCamera == null) targetCamera = Camera.main;
+
         vignetteCanvasObj = new GameObject("VR_RedVignette_Overlay");
-        vignetteCanvasObj.transform.SetParent(transform, false);
+        if (targetCamera != null)
+        {
+            vignetteCanvasObj.transform.SetParent(targetCamera.transform, false);
+            vignetteCanvasObj.transform.localPosition = new Vector3(0f, 0f, 0.12f);
+            vignetteCanvasObj.transform.localRotation = Quaternion.identity;
+        }
+        else
+        {
+            vignetteCanvasObj.transform.SetParent(transform, false);
+        }
 
         var canvas = vignetteCanvasObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 30000;
         vignetteCanvasObj.AddComponent<CanvasScaler>();
 
         vignetteCanvasGroup = vignetteCanvasObj.AddComponent<CanvasGroup>();
@@ -308,8 +334,9 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         vignetteCanvasGroup.interactable = false;
 
         var rect = vignetteCanvasObj.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(900, 600);
-        rect.localScale = new Vector3(0.00065f, 0.00065f, 0.00065f);
+        // Massive 3.0m x 3.0m quad at 0.12m distance (>170 deg FOV coverage) guarantees NO box corners or boundaries visible in VR!
+        rect.sizeDelta = new Vector2(3000f, 3000f);
+        rect.localScale = new Vector3(0.001f, 0.001f, 0.001f);
 
         // Procedural radial vignette image
         GameObject imgGo = new GameObject("VignetteImage");
@@ -321,14 +348,22 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
 
         vignetteImage = imgGo.AddComponent<Image>();
         vignetteImage.sprite = CreateVignetteSprite();
-        vignetteImage.color = new Color(1f, 0.08f, 0.08f, 1f);
+        vignetteImage.color = new Color(0.95f, 0.05f, 0.05f, 1f);
         vignetteImage.raycastTarget = false;
+
+        var noZTestShader = Shader.Find("UI/NoZTest");
+        if (noZTestShader != null)
+        {
+            vignetteImage.material = new Material(noZTestShader);
+        }
     }
 
     private Sprite CreateVignetteSprite()
     {
-        int size = 256;
+        int size = 512;
         Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
         Color[] pixels = new Color[size * size];
         Vector2 center = new Vector2(0.5f, 0.5f);
 
@@ -336,10 +371,24 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         {
             for (int x = 0; x < size; x++)
             {
-                Vector2 uv = new Vector2((float)x / size, (float)y / size);
-                float dist = Vector2.Distance(uv, center) * 1.4142f; // 0 at center, 1 at corner
-                float alpha = Mathf.Clamp01((dist - 0.35f) / 0.65f);
-                alpha = Mathf.Pow(alpha, 1.8f); // Soft radial exponential falloff
+                Vector2 uv = new Vector2((x + 0.5f) / size, (y + 0.5f) / size);
+                float d = Vector2.Distance(uv, center) * 2f; // 0 at center, 1 at circle edge, ~1.414 at corners
+
+                float alpha;
+                if (d < 0.38f)
+                {
+                    alpha = 0f; // Clear central vision
+                }
+                else if (d >= 0.88f)
+                {
+                    alpha = 1f; // 100% solid color across entire outer periphery and corners
+                }
+                else
+                {
+                    float t = (d - 0.38f) / (0.88f - 0.38f);
+                    alpha = Mathf.SmoothStep(0f, 1f, t);
+                }
+
                 pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
             }
         }
@@ -425,7 +474,7 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         }
     }
 
-    private void SendHapticsToControllers(float amplitude, float duration)
+    public void SendHapticsToControllers(float amplitude, float duration)
     {
         var interactors = FindObjectsByType<XRBaseInteractor>(FindObjectsSortMode.None);
         foreach (var interactor in interactors)

@@ -371,6 +371,24 @@ public class MotherDrapingManager : MonoBehaviour
             targetSlot.placeholderGreenDrape.SetActive(true);
         }
 
+        // Unlock Mayo Table if this was the Mayo Stand Drape
+        if (targetSlot.slotName.Contains("Mayo") || slotIndex == 4)
+        {
+            if (MayoStandDrapeSocket.Instance != null)
+            {
+                MayoStandDrapeSocket.Instance.isDraped = true;
+                MayoStandDrapeSocket.Instance.isSocketActive = false;
+                if (MayoStandDrapeSocket.Instance.ghostDrapeObject != null)
+                    MayoStandDrapeSocket.Instance.ghostDrapeObject.SetActive(false);
+                if (MayoStandDrapeSocket.Instance.actualDrapeObject != null)
+                    MayoStandDrapeSocket.Instance.actualDrapeObject.SetActive(true);
+            }
+            if (TablePrepManager.Instance != null)
+            {
+                TablePrepManager.Instance.isMayoDraped = true;
+            }
+        }
+
         // Play audio chime
         if (audioSource != null && drapePlaceAudio != null)
         {
@@ -413,29 +431,8 @@ public class MotherDrapingManager : MonoBehaviour
         }
         else
         {
-            // All 4 patient zones completed!
-            // Check if Mayo Stand needs to be draped (Step 6B):
-            if (MayoStandDrapeSocket.Instance != null && !MayoStandDrapeSocket.Instance.isDraped)
-            {
-                SpawnNextLinenOnTable1();
-                MayoStandDrapeSocket.Instance.ActivateSocket();
-
-                if (DrapingGuideUI.Instance != null)
-                {
-                    DrapingGuideUI.Instance.ShowMayoDrapingStep();
-                }
-
-                if (VRDemoGameManager.Instance != null)
-                {
-                    VRDemoGameManager.Instance.ShowWarning("Patient Draped! Pick up sterile linen with BOTH hands to drape the Mayo Stand.");
-                }
-
-                Debug.Log("[MotherDrapingManager] All 4 patient drapes placed! Initiating Step 6B: Mayo Stand Draping.");
-            }
-            else
-            {
-                CompleteAllDraping();
-            }
+            // All draping zones (Mother + Mayo Stand) completed!
+            CompleteAllDraping();
         }
 
         return true;
@@ -453,6 +450,15 @@ public class MotherDrapingManager : MonoBehaviour
     {
         isDrapingComplete = true;
         isDrapingActive = false;
+        if (MayoStandDrapeSocket.Instance != null)
+        {
+            MayoStandDrapeSocket.Instance.isDraped = true;
+            MayoStandDrapeSocket.Instance.isSocketActive = false;
+        }
+        if (TablePrepManager.Instance != null)
+        {
+            TablePrepManager.Instance.isMayoDraped = true;
+        }
         Debug.Log("[MotherDrapingManager] All Drapes (Patient + Mayo Stand) placed successfully! Delivery field & Mayo table sterile & complete.");
         OnAllDrapesCompleted?.Invoke();
     }

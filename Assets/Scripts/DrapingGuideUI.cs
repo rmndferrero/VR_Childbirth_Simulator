@@ -290,7 +290,11 @@ public class DrapingGuideUI : MonoBehaviour
 
             // Remove cloned StrokeGuideUI component on the clone
             var oldComp = drapingCanvas.GetComponent<StrokeGuideUI>();
-            if (oldComp != null) Destroy(oldComp);
+            if (oldComp != null)
+            {
+                if (Application.isPlaying) Destroy(oldComp);
+                else DestroyImmediate(oldComp);
+            }
 
             rootCanvas = drapingCanvas;
 

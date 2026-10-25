@@ -14,7 +14,7 @@ public class WashableIodinePuddle : MonoBehaviour
     public GameObject coating10Object;
 
     [Header("Wash Properties")]
-    public float washFadeSpeed = 1.8f;
+    public float washFadeSpeed = 0.75f;
     public bool isPuddleActive { get; private set; } = false;
     public bool isFullyWashed { get; private set; } = false;
 
@@ -22,6 +22,8 @@ public class WashableIodinePuddle : MonoBehaviour
     private Renderer puddleRenderer;
     private DecalProjector puddleDecal;
     private Material instantiatedMat;
+    private UnityEngine.UI.Image puddleImage;
+    private CanvasGroup puddleCanvasGroup;
     private Vector3 initialPuddleScale = Vector3.one;
 
     private void Awake()
@@ -40,6 +42,8 @@ public class WashableIodinePuddle : MonoBehaviour
 
             puddleRenderer = puddle75Object.GetComponent<Renderer>();
             puddleDecal = puddle75Object.GetComponent<DecalProjector>();
+            puddleImage = puddle75Object.GetComponent<UnityEngine.UI.Image>() ?? puddle75Object.GetComponentInChildren<UnityEngine.UI.Image>();
+            puddleCanvasGroup = puddle75Object.GetComponent<CanvasGroup>() ?? puddle75Object.GetComponentInChildren<CanvasGroup>();
 
             if (puddleRenderer != null)
             {
@@ -61,6 +65,11 @@ public class WashableIodinePuddle : MonoBehaviour
     public void Apply7_5Puddle()
     {
         CacheRenderers();
+        if (transform.parent != null && !transform.parent.gameObject.activeSelf)
+            transform.parent.gameObject.SetActive(true);
+        if (puddle75Object != null && puddle75Object.transform.parent != null && !puddle75Object.transform.parent.gameObject.activeSelf)
+            puddle75Object.transform.parent.gameObject.SetActive(true);
+
         if (puddle75Object != null)
         {
             if (initialPuddleScale != Vector3.zero)
@@ -85,6 +94,11 @@ public class WashableIodinePuddle : MonoBehaviour
     /// </summary>
     public void Apply10Coating()
     {
+        if (transform.parent != null && !transform.parent.gameObject.activeSelf)
+            transform.parent.gameObject.SetActive(true);
+        if (coating10Object != null && coating10Object.transform.parent != null && !coating10Object.transform.parent.gameObject.activeSelf)
+            coating10Object.transform.parent.gameObject.SetActive(true);
+
         if (puddle75Object != null) puddle75Object.SetActive(false);
 
         if (coating10Object != null)
@@ -129,6 +143,18 @@ public class WashableIodinePuddle : MonoBehaviour
 
     private void UpdatePuddleOpacity(float alpha)
     {
+        if (puddleImage != null)
+        {
+            Color c = puddleImage.color;
+            c.a = alpha;
+            puddleImage.color = c;
+        }
+
+        if (puddleCanvasGroup != null)
+        {
+            puddleCanvasGroup.alpha = alpha;
+        }
+
         if (puddleDecal != null)
         {
             puddleDecal.fadeFactor = alpha;
@@ -150,7 +176,8 @@ public class WashableIodinePuddle : MonoBehaviour
             }
         }
 
-        if (puddle75Object != null && initialPuddleScale != Vector3.zero)
+        // Only scale 3D meshes, not 2D UI RectTransforms
+        if (puddle75Object != null && initialPuddleScale != Vector3.zero && puddle75Object.GetComponent<RectTransform>() == null)
         {
             puddle75Object.transform.localScale = initialPuddleScale * Mathf.Lerp(0.15f, 1.0f, alpha);
         }
@@ -161,10 +188,11 @@ public class WashableIodinePuddle : MonoBehaviour
         isPuddleActive = false;
         isFullyWashed = false;
         currentOpacity = 1.0f;
+        UpdatePuddleOpacity(1.0f);
         if (puddle75Object != null)
         {
             puddle75Object.SetActive(false);
-            if (initialPuddleScale != Vector3.zero)
+            if (initialPuddleScale != Vector3.zero && puddle75Object.GetComponent<RectTransform>() == null)
             {
                 puddle75Object.transform.localScale = initialPuddleScale;
             }
