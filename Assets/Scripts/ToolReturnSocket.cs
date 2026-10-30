@@ -227,6 +227,7 @@ public class ToolReturnSocket : MonoBehaviour
 
         tool.OnToolSafelyReturned();
         Debug.Log($"[ToolReturnSocket] Tool '{tool.toolID}' safely returned to table socket.");
+        EvaluationLogger.Instance.LogCorrect("Tool returned to socket", MatrixCriterion.Sterility, tool.toolID);
     }
 
     public void ShowGhost()

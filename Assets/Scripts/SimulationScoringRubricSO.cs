@@ -23,7 +23,10 @@ public enum ClinicalViolationType
 
     // Universal Field Violations
     Floor_Drop_Instrument,
-    Contaminated_Drop_Outside_Basin
+    Contaminated_Drop_Outside_Basin,
+
+    // Decision Matrix only (no legacy penalty). Appended last to keep existing serialized values.
+    Forceps_Transfer_Error
 }
 
 /// <summary>
@@ -117,6 +120,8 @@ public class SimulationScoringRubricSO : ScriptableObject
                 return floorDropPenalty;
             case ClinicalViolationType.Contaminated_Drop_Outside_Basin:
                 return contaminatedDropPenalty;
+            case ClinicalViolationType.Forceps_Transfer_Error:
+                return 0; // logged to the Decision Matrix only
             default:
                 return 5;
         }

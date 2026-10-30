@@ -9,6 +9,8 @@ public class CottonJarZone : MonoBehaviour
     [Tooltip("Material applied to the soaked cotton ball.")]
     public Material soakedMaterial;
 
+    private float lastHandlingForcepsEntryTime = -99f;
+
     private void OnTriggerEnter(Collider other)
     {
         ForcepsController forceps = other.GetComponentInParent<ForcepsController>();
@@ -22,6 +24,14 @@ public class CottonJarZone : MonoBehaviour
             else
             {
                 Debug.LogWarning("[CottonJarZone] Only Pickup Forceps may extract cotton from antiseptic jars!");
+
+                // Decision Matrix only: the Handling forceps contaminates the stock jar.
+                if (Time.time - lastHandlingForcepsEntryTime > 1.5f)
+                {
+                    lastHandlingForcepsEntryTime = Time.time;
+                    EvaluationLogger.Instance.LogMatrixOnlyViolation(ClinicalViolationType.Forceps_Transfer_Error,
+                        "Handling forceps entered the cotton jar", antisepticType.ToString());
+                }
             }
         }
     }

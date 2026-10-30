@@ -137,13 +137,8 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         FlashRedVignette(1.8f);
         ShowInFaceHUD(title, subtitle, new Color(0.95f, 0.20f, 0.20f, 1f), 3.0f);
 
-        if (VRDemoGameManager.Instance != null)
-        {
-            string mistakeLog = string.IsNullOrEmpty(step1MistakeLogText)
-                ? $"Handled '{cleanName}' before obtaining informed consent"
-                : string.Format(step1MistakeLogText, cleanName);
-            VRDemoGameManager.Instance.RecordMistake(mistakeLog, 5);
-        }
+        // Scoring is done once by the caller (ToolItem -> RecordViolation(Tool_Handled_Before_Consent));
+        // this method only gives the vignette / HUD / audio / haptic feedback.
 
         PlayWarningAudio();
         SendHapticsToControllers(0.6f, 0.35f);

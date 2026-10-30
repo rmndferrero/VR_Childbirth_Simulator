@@ -46,36 +46,36 @@ public class CommunicationDebriefData
         if (explainToken != null && !string.IsNullOrEmpty(explainToken.clinicalCritiqueNote))
             data.specificTokenCritiques.Add($"Explanation: {explainToken.clinicalCritiqueNote}");
 
-        // Determine Archetype and Preceptor Debrief Commentary
+        // Determine archetype and a descriptive note about the selected phrases (no judgement of the student)
         if (data.professionalismPercent >= 75f && data.empathyPercent >= 75f && data.clarityPercent >= 75f)
         {
             data.archetypeTitle = "Exemplary Therapeutic Communication";
             data.personalizedInstructorDebrief =
-                "Candidate demonstrated well-rounded therapeutic communication. You formally introduced yourself as a student nurse, verified patient identity, and prepared the mother with warmth and clear sensory expectations.";
+                "The selected phrases included a role introduction, patient identity verification, reassurance, and preparation for the sensations of the procedure.";
         }
         else if (data.empathyPercent >= 75f && (data.professionalismPercent < 60f || data.clarityPercent < 60f))
         {
             data.archetypeTitle = "Empathetic but Lacks Protocol / Procedural Rigor";
             data.personalizedInstructorDebrief =
-                "Candidate displayed genuine bedside warmth and reassurance, putting the mother at ease. However, professional protocol was lacking: you omitted formal role identification or failed to clearly explain the physical sensations (warm water wash, vaginal touch, sterile drapes). Remember: empathy must always be anchored by rigorous clinical protocol.";
+                "The selected phrases scored higher on reassurance. The role introduction and/or the explanation of physical sensations (warm water wash, touch, sterile drapes) scored lower in this run.";
         }
         else if (data.professionalismPercent >= 75f && data.clarityPercent >= 75f && data.empathyPercent < 60f)
         {
             data.archetypeTitle = "Clinically Precise but Lacks Bedside Empathy";
             data.personalizedInstructorDebrief =
-                "Candidate followed formal hospital protocol and explained the procedural sequence accurately, but tone was cold and impersonal. In obstetric care, laboring patients are emotionally vulnerable; clinical precision must be accompanied by compassionate comfort reassurance.";
+                "The selected phrases scored higher on role introduction and procedural explanation, and lower on reassurance and comfort in this run.";
         }
         else if (data.professionalismPercent >= 70f && data.empathyPercent >= 70f && data.clarityPercent < 50f)
         {
             data.archetypeTitle = "Courteous but Vague on Procedure";
             data.personalizedInstructorDebrief =
-                "Candidate was polite and reassuring, but failed to prepare the mother for the physical sensations of the cleaning procedure. An unbriefed patient can be startled when warm water is poured or antiseptic swabs make contact.";
+                "The selected phrases scored higher on courtesy and reassurance, and lower on preparing the mother for the physical sensations of the cleaning procedure in this run.";
         }
         else
         {
             data.archetypeTitle = "Abrupt / Inadequate Bedside Manner";
             data.personalizedInstructorDebrief =
-                "Communication was hurried, blunt, or dismissive. Rushing through the patient encounter without proper self-introduction, identity verification, or sensory preparation triggers anxiety and violates informed consent standards.";
+                "The selected phrases scored lower on self-introduction, identity verification and sensory preparation in this run.";
         }
 
         return data;

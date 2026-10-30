@@ -109,7 +109,7 @@ public class CottonState : MonoBehaviour
             // Dropped outside waste basin -> Record contamination penalty
             if (VRDemoGameManager.Instance != null)
             {
-                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped! Always discard used cotton into the waste basin.");
+                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped! Always discard used cotton into the waste basin.", MatrixDropType);
             }
 
             Destroy(gameObject);
@@ -130,12 +130,17 @@ public class CottonState : MonoBehaviour
 
             if (VRDemoGameManager.Instance != null)
             {
-                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped on the floor! Discard into the waste basin.");
+                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped on the floor! Discard into the waste basin.", MatrixDropType);
             }
 
             Destroy(gameObject);
         }
     }
+
+    // Decision Matrix classification only: a used/soaked cotton dropped outside the basin is contaminated waste.
+    private ClinicalViolationType MatrixDropType => isUsed || isSoaked
+        ? ClinicalViolationType.Contaminated_Drop_Outside_Basin
+        : ClinicalViolationType.Floor_Drop_Instrument;
 
     public void SoakCotton(Material soakedMaterial, AntisepticType type = AntisepticType.Iodine_7_5_Scrub)
     {

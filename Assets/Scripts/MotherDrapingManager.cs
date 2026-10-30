@@ -397,6 +397,7 @@ public class MotherDrapingManager : MonoBehaviour
 
         int completedStep = currentTargetIndex + 1;
         Debug.Log($"[MotherDrapingManager] Placed Drape: {targetSlot.slotName} ({completedStep}/{drapeSlots.Count})");
+        EvaluationLogger.Instance.LogCorrect($"Drape {completedStep} placed", MatrixCriterion.Sequence, targetSlot.slotName);
 
         OnDrapePlaced?.Invoke(slotIndex, targetSlot);
 

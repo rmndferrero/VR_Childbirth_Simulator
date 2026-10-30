@@ -343,6 +343,7 @@ public class TablePrepManager : MonoBehaviour
         isTablePrepActive = false;
 
         Debug.Log("[TablePrepManager] All tools verified and perfected on Mayo Table! Step 7 Completed.");
+        EvaluationLogger.Instance.LogCorrect("Mayo table setup confirmed", MatrixCriterion.Technique);
 
         OnTablePrepCompleted?.Invoke();
 

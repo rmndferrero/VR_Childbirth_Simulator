@@ -14,9 +14,10 @@ TABLE OF CONTENTS:
 3. THE 8-STEP CLINICAL SIMULATION SEQUENCE (DETAILED BREAKDOWN)
 4. SCORING ENGINE & MISTAKE EVALUATION SYSTEM
 5. INTERACTIVE HARDWARE & VR SUBSYSTEMS
-6. COMPLETE CODEBASE INVENTORY (ALL 29 ACTIVE SCRIPTS)
+6. COMPLETE CODEBASE INVENTORY (29 GAMEPLAY SCRIPTS + 7 EVALUATION SCRIPTS)
 7. RULE-BASED VALIDATION VS. DECISION MATRIX EXPLANATION
 8. LOCAL DATA PERSISTENCE & RECORD STORAGE
+9. DECISION MATRIX EVALUATOR (PARALLEL WSM SCORE)
 ====================================================================================================
 
 
@@ -183,6 +184,7 @@ STEP 7: SETUP TABLE (MAYO PREP PLACEHOLDER)
 STEP 8: FINAL SUMMARY & MISTAKE EVALUATION UI
 ----------------------------------------------------------------------------------------------------
 - UI: FloatingPokeDialogueUI renders the comprehensive Clinical Evaluation Card:
+  (Fallback only - the main Step 8 UI is the SummaryScreen, see section 9.)
   1. Header: "CLINICAL EVALUATION SUMMARY"
   2. Final Score: Displays calculated score out of 100 with grade:
      - 85% to 100%: PASS (EXCELLENT)
@@ -218,6 +220,14 @@ One-Handed Draping Attempt                        | Warning | Blocked until held
 Safe Tool Return to Table Socket (Proximity Snap) | 0 pts   | Ghost preview -> Kinematic snap lock
 Safe Cotton Disposal into Bedside Waste Basin     | 0 pts   | Cotton destroyed with safe audio chime
 
+Notes:
+- Handling a tool before consent (Step 1) is deducted ONCE per tool via ToolItem ->
+  RecordViolation(Tool_Handled_Before_Consent). VRHeadsetVisualFeedback.TriggerStep1ToolViolation now
+  only gives the red vignette / HUD / audio / haptic feedback (the duplicate RecordMistake was removed).
+- Reused cotton and forceps transfer errors carry NO legacy penalty; they are scored only in the
+  Decision Matrix (Section 9).
+- The legacy score above is unchanged by the Decision Matrix, which is computed in parallel.
+
 
 ====================================================================================================
 5. INTERACTIVE HARDWARE & VR SUBSYSTEMS
@@ -248,7 +258,7 @@ Safe Cotton Disposal into Bedside Waste Basin     | 0 pts   | Cotton destroyed w
 
 
 ====================================================================================================
-6. COMPLETE CODEBASE INVENTORY (ALL 29 ACTIVE SCRIPTS)
+6. COMPLETE CODEBASE INVENTORY (29 GAMEPLAY SCRIPTS + 7 EVALUATION SCRIPTS)
 ====================================================================================================
 
 Simulation & State Management:
@@ -292,21 +302,32 @@ VR & Editor Helpers:
 28. PosedMeshColliderBaker.cs    - Bakes mesh colliders onto deformed mother model.
 29. StrokeZoneGizmoVisualizer.cs - Scene view gizmo visualizer for development.
 
+Decision Matrix Evaluator (Assets/Scripts/Evaluation):
+30. Core/EvaluationEvent.cs         - Event record, MatrixCriterion & MistakeSeverity enums, StepTiming.
+31. Core/DecisionMatrixConfig.cs    - Plain-data matrix config (weights, deductions, N/A cells).
+32. Core/DecisionMatrixEvaluator.cs - Pure C# WSM evaluator + result types (EditMode tested).
+    (Core/ is its own assembly, VRSim.Evaluation.Core, with no UnityEngine dependency.)
+33. DecisionMatrixSO.cs             - Inspector-editable matrix asset (weights, tiers, mapping).
+34. EvaluationLogger.cs             - Structured event log singleton, step timings, free-text mapping.
+35. GameplayCaptureService.cs       - Player-POV 640x360 screenshots of first mistake per type per step.
+36. EvaluationReportExporter.cs     - Matrix record fields, Save / Don't Save state, JSON + CSV + HTML export.
+Tests: Assets/Tests/EditMode/DecisionMatrixEvaluatorTests.cs (assembly VRSim.Evaluation.Tests).
+
 
 ====================================================================================================
 7. RULE-BASED VALIDATION VS. DECISION MATRIX EXPLANATION
 ====================================================================================================
 
-What is currently implemented:
-Your system is currently a PURE RULE-BASED VALIDATION ENGINE.
-- Every check is directly computed through deterministic clinical rules in C# code.
-- Advantages: Extremely fast, zero lookup overhead, robust, no missing data asset dependencies.
+Two layers now run side by side:
 
-What a Decision Matrix would add (Optional Future Expansion):
-A Decision Matrix is a data-driven table: [Step Index] x [Action/Tool] -> [Penalty, Warning, Severity].
-- If you ever wish to allow non-programmers or clinical educators to edit penalty weights or
-  custom warning texts via a Unity Inspector table without touching C# code, a Decision Matrix
-  ScriptableObject can be layered on top of VRDemoGameManager.
+Rule layer (detection, unchanged): every check is still computed by deterministic clinical rules in
+the gameplay scripts (stroke order, wipe direction, two-handed draping, drops, Mayo gating, consent).
+These rules also drive the legacy 100-minus-penalties score (Section 4).
+
+Decision Matrix layer (evaluation, new): every rule outcome is also written as a structured
+EvaluationEvent. The Decision Matrix (Section 9) then scores those events with a Weighted Sum Model
+whose weights, severity tiers, applicable cells and violation mapping live in a ScriptableObject
+asset that a clinical educator can edit in the Inspector without touching C# code.
 
 
 ====================================================================================================
@@ -328,8 +349,128 @@ Sample Output:
         "Step 3: Dropped Cotton on floor/unsterile surface (-5 pts)",
         "Step 6: Out of order Draping Order Violation (-5 pts)",
         "Step 1: Improper communication with patient (-5 pts)"
-    ]
+    ],
+    ... Decision Matrix fields (see below) ...
 }
+
+The fields above are unchanged. The record now also contains: sessionId, sessionFolder, matrixScore,
+severeMistakeCount, decisionMatrix (cells, criteria, grouped mistakes),
+evaluationEvents, stepTimings and capturePaths.
+
+The SimulationRecord_*.json above is ALWAYS saved, exactly as before (it now also carries the
+Decision Matrix fields, roughly 15-20 KB per run).
+
+Optional session export (Save Evaluation / Don't Save):
+- While playing, screenshots are written to a TEMPORARY folder:
+  Application.temporaryCachePath\SimulationCaptures\<sessionId>\
+- On the Step 8 Decision Matrix page the student / instructor pokes "Save Evaluation" or "Don't Save".
+  Save       -> screenshots are moved to the permanent folder below and JSON / CSV / HTML are written;
+                the page then shows the saved path.
+  Don't Save -> the temp folder is deleted (the summary pages keep their in-memory thumbnails).
+  Restart, or quitting without saving -> the temp folder is deleted.
+  On startup any leftover temp session folders (e.g. after a crash) are deleted.
+- VRDemoGameManager.askBeforeSaving (Inspector, default ON). Turn it OFF to auto-save every session.
+
+Permanent session folder (only when saved):
+C:\Users\<User>\AppData\LocalLow\<CompanyName>\<ProjectName>\SimulationCaptures\<sessionId>\
+  SimulationRecord.json   - same record as above
+  events.csv              - one row per event (time, step, action, correct, type, criterion, severity,
+                            count, detail, capture id, legacy penalty, legacy applied)
+  matrix.csv              - cell scores, criterion scores/weights, matrix score, legacy score
+  report.html             - self-contained instructor report (screenshots embedded as base64)
+  cap_NN_stepN_<Type>.png - player-POV screenshots
+
+====================================================================================================
+9. DECISION MATRIX EVALUATOR (PARALLEL WSM SCORE)
+====================================================================================================
+Purpose: a second, parallel score for the thesis evaluation. It never changes
+VRDemoGameManager.currentScore or any gameplay behaviour.
+
+Matrix layout:
+  Rows    = Steps 1-7
+  Columns = Sterility (0.35), Sequence (0.25), Technique (0.25), Communication (0.15)
+  (placeholder weights; editable in Assets/ScenarioData/Scoring/DecisionMatrix_Placeholder.asset,
+   assigned through the "Decision Matrix" field on VRDemoGameManager. If that field is empty,
+   identical built-in placeholder values are used.)
+
+Severity tiers (thesis proposal):
+  No Mistake = 0      Moderate = -25 cell points      Severe = -50 cell points + flag
+
+Formulas:
+  Cell      = max(0, 100 - sum of deductions); each violation type is deducted ONCE per step,
+              later repeats only increase the displayed count.
+  Criterion = mean of applicable cells (N/A cells excluded). A violation landing in an N/A cell
+              makes that cell applicable so the mistake is never lost.
+  Matrix    = sum(w * criterion) / sum(w) over criteria that have at least one applicable cell.
+  Step 1 Communication cell = phrase-board compositeScore (PhraseDecisionMatrix). Dialogue
+              violations are still flagged/counted there but not deducted twice. If the phrase board
+              never ran, the normal deductions apply.
+  Thresholds: the rubric pass / honors thresholds (70 / 85) are still read into the config, but no
+              rating is shown on the summary screen or written to the JSON / CSV / HTML export.
+  Severe mistakes never fail the run on their own; they are flagged and listed first.
+
+Placeholder applicability (N/A cells):
+  Step 1: Sequence, Communication      Steps 2-6: Sterility, Sequence, Technique
+  Step 7: Sterility, Technique
+
+Placeholder violation mapping (criterion / severity, editable per type in the asset):
+  Sterility : Floor_Drop_Instrument (Moderate), Reused_Cotton_Ball (Moderate, matrix only),
+              Contaminated_Drop_Outside_Basin (Severe), Unsterile_Mayo_Placement_Violation (Severe)
+  Sequence  : Tool_Handled_Before_Consent, Out_Of_Order_Stroke, Out_Of_Order_Drape (Moderate)
+  Technique : Reverse_Wipe_Direction, One_Handed_Drape_Violation, Incorrect_Table_Slot,
+              Forceps_Transfer_Error (Moderate, matrix only)
+  Communication: Suboptimal_Dialogue (Moderate), Inadequate_Dialogue (Severe)
+  A used/soaked cotton dropped outside the basin is Contaminated_Drop_Outside_Basin; a fresh one is
+  Floor_Drop_Instrument (same legacy penalty either way).
+  Forceps_Transfer_Error = (1) a stroke attempted with cotton still held by the Pickup forceps, or
+  (2) the Handling forceps entering the cotton jar (both throttled to once per 1.5 s).
+
+Event log (EvaluationLogger):
+  Mistakes are logged from VRDemoGameManager.RecordViolation / RecordMistake / RecordDropPenalty
+  BEFORE their legacy dedupe, so repeats are counted. Free-text RecordMistake messages are mapped by
+  keyword ("out of order", "wipe downward", "consent", "improper communication", "mayo table setup",
+  "already used"); anything else is logged as Unclassified (listed, not scored).
+  Correct actions logged: consent obtained, stroke completed, drape placed, Mayo table confirmed,
+  tool returned to socket, cotton disposed in the waste basin. Step start/end times come from
+  OnSimulationPhaseChanged.
+
+Gameplay captures (GameplayCaptureService):
+  First occurrence of each mistake type per step, max 30 per session, 640x360 from the player's
+  point of view (hidden mono camera copying the HMD pose; the XR camera is never re-targeted),
+  0.25 s after the mistake. Uses AsyncGPUReadback when supported (PC Link, Quest Vulkan) and falls
+  back to ReadPixels otherwise. Severe screenshots get a red edge tint in the image itself
+  (tintSevereCaptures), because the in-headset vignette sits at the far periphery of the view and
+  is not visible to a normal-FOV camera.
+
+Severe response (Phase 3):
+  Every Severe event flashes the existing red POV vignette (VRHeadsetVisualFeedback.FlashRedVignette,
+  1.6 s). No new blocking and no score change: the Severe actions already block where it makes sense
+  (Inadequate dialogue keeps consent locked; unsterile Mayo placement rejects the tool; a contaminated
+  cotton drop is already off the field). Changing a type to Severe in the asset gives it the red flash
+  automatically.
+
+Step 8 Summary Screen (Phase 6):
+  The summary screen reports what the simulation recorded; it never grades the student (no pass /
+  honors / tier wording, no pass/fail colours). Header: "SIMULATION SUMMARY".
+  Disclaimer: one shared label above the footer on every page and at the top of report.html. Text is
+            EvaluationDisclaimer.Text, editable via the "disclaimer" field on SummaryScreenController.
+  Page 1  : Communication score (plain %), "Communication summary", three % bars in one neutral colour,
+            communication notes and phrase observations.
+  Page 2-3: Steps recorded ("Completed" only if the step's timing entry closed, else "Not completed",
+            with stroke / drape counts from the event log) and "Recorded mistakes" for the section.
+  Page 4  : "Recorded score: X / 100" and the recorded mistakes list (no verdict).
+  Page 5  : Decision Matrix - simulation score (penalty-based) and decision matrix score shown
+            neutrally, grid (steps x criteria, one neutral cell colour, N/A darker, [!] = Severe,
+            repeat counts), criterion scores, and the Save Evaluation / Don't Save bar.
+  Page 6+ : Mistake Gallery - 2 cards per page, Severe first: screenshot, criterion, step, count,
+            what went wrong, correct technique. Restart is on the last page.
+  The page objects (Page_5_Matrix, Page_6_Gallery) are in MainScene under SummaryScreen/PageContainer;
+  the grid cells are generated at runtime.
+
+Pending items:
+  - Final clinical weights, severities and applicability to be confirmed by the nursing instructor
+    (current values are placeholders in DecisionMatrix_Placeholder.asset).
+  - In-headset check of the new summary pages and Save / Don't Save buttons (tested in the Editor only).
 
 ====================================================================================================
 END OF DOCUMENTATION

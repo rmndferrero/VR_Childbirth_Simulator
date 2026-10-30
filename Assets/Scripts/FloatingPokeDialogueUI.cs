@@ -161,33 +161,20 @@ public class FloatingPokeDialogueUI : MonoBehaviour
 
         if (summaryTitleText != null)
         {
-            summaryTitleText.text = "CLINICAL EVALUATION SUMMARY";
+            summaryTitleText.text = "SIMULATION SUMMARY";
         }
 
         if (summaryScoreText != null)
         {
-            string grade = (finalScore >= 85)
-                ? "<color=#34D399>PASS (EXCELLENT)</color>"
-                : (finalScore >= 70 ? "<color=#FBBF24>PASS</color>" : "<color=#EF4444>NEEDS PRACTICE</color>");
-
-            summaryScoreText.text = $"Final Score: <color=#38BDF8><b>{finalScore} / 100</b></color>  •  {grade}";
+            summaryScoreText.text = $"Recorded score: <b>{finalScore} / 100</b>";
         }
 
         if (summaryMistakesListText != null)
         {
-            if (mistakes == null || mistakes.Count == 0)
-            {
-                summaryMistakesListText.text = "<color=#34D399><b>✓ Flawless Procedure!</b>\n• Zero sterile violations recorded.\n• All instruments properly returned to sterile tray.\n• Accurate 8-step clinical sequencing maintained.</color>";
-            }
-            else
-            {
-                string listStr = $"<color=#EF4444><b>Clinical Mistakes & Deductions ({mistakes.Count}):</b></color>\n";
-                foreach (var m in mistakes)
-                {
-                    listStr += $"<color=#FCA5A5>• {m}</color>\n";
-                }
-                summaryMistakesListText.text = listStr.TrimEnd();
-            }
+            string listStr = mistakes == null || mistakes.Count == 0
+                ? "<b>Recorded mistakes (0):</b>\n• No mistakes were recorded by the simulation."
+                : $"<b>Recorded mistakes ({mistakes.Count}):</b>\n• " + string.Join("\n• ", mistakes);
+            summaryMistakesListText.text = listStr + $"\n\n<size=80%><i>{EvaluationDisclaimer.Text}</i></size>";
         }
 
         if (summaryRestartButton != null)

@@ -97,6 +97,7 @@ public class WasteBasin : MonoBehaviour
             Destroy(targetGo);
 
             Debug.Log("[WasteBasin] Cotton safely released from forceps and discarded into waste basin (0 penalty).");
+            EvaluationLogger.Instance.LogCorrect("Cotton disposed in waste basin", MatrixCriterion.Sterility);
         }
     }
 }

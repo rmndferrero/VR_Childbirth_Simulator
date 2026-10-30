@@ -12,6 +12,16 @@ public class SimulationRecord
     public string dateCompleted;
     public int finalScore;
     public List<string> mistakesMade = new List<string>();
+
+    // ── Decision Matrix (parallel evaluation; the fields above are unchanged) ──
+    public string sessionId;
+    public string sessionFolder;
+    public float matrixScore;
+    public int severeMistakeCount;
+    public DecisionMatrixResult decisionMatrix;
+    public List<EvaluationEvent> evaluationEvents = new List<EvaluationEvent>();
+    public List<StepTiming> stepTimings = new List<StepTiming>();
+    public List<string> capturePaths = new List<string>();
 }
 
 public enum SimulationPhase
@@ -60,6 +70,13 @@ public class VRDemoGameManager : MonoBehaviour
     [Header("Step 8 Summary Screen Controller")]
     public SummaryScreenController summaryScreenController;
 
+    [Header("Decision Matrix (parallel score, does not affect currentScore)")]
+    [Tooltip("Inspector-editable Decision Matrix. If empty, built-in placeholder values are used.")]
+    public DecisionMatrixSO decisionMatrix;
+
+    [Tooltip("If true, the Step 8 summary asks 'Save Evaluation / Don't Save' before writing the session folder (JSON, CSV, HTML, screenshots). If false, it is saved automatically. The small SimulationRecord_*.json is always saved.")]
+    public bool askBeforeSaving = true;
+
     [Header("Scoring Engine")]
     public int currentScore = 100;
     public int currentScenarioScore
@@ -93,6 +110,9 @@ public class VRDemoGameManager : MonoBehaviour
 
         if (perinealCareManager == null) perinealCareManager = FindFirstObjectByType<PerinealCareManager>();
         if (motherDrapingManager == null) motherDrapingManager = FindFirstObjectByType<MotherDrapingManager>();
+
+        EvaluationLogger.Instance.Bind(this);
+        GameplayCaptureService.EnsureExists();
     }
 
     private void Start()
@@ -107,6 +127,7 @@ public class VRDemoGameManager : MonoBehaviour
         heldToolPenalties.Clear();
         mistakeLog.Clear();
         InitializeNewRecord();
+        EvaluationLogger.Instance.ResetSession();
 
         Debug.Log("[VRDemoGameManager] Initializing 8-Step Simulation Protocol at Step 1: Talk to Mother / Informed Consent.");
         SetPhase(SimulationPhase.STEP_1_TALK_TO_MOTHER);
@@ -140,6 +161,7 @@ public class VRDemoGameManager : MonoBehaviour
 
     public void AdvanceFromStep1_Consent()
     {
+        EvaluationLogger.Instance.LogCorrect("Informed consent obtained", MatrixCriterion.Communication);
         SetPhase(SimulationPhase.STEP_2_PRELIMINARY_WATER_WASH);
         if (perinealCareManager != null)
         {
@@ -247,6 +269,7 @@ public class VRDemoGameManager : MonoBehaviour
         int penalty = scoringRubric != null ? scoringRubric.GetPenaltyForViolation(violationType) : 5;
         string violationName = violationType.ToString().Replace('_', ' ');
         string mistakeSignature = $"step{(int)currentSimulationPhase}_{violationType}_{customDetails}";
+        EvaluationLogger.Instance.LogViolation(violationType, violationName, customDetails, penalty, !penalizedMistakes.Contains(mistakeSignature));
 
         if (!penalizedMistakes.Contains(mistakeSignature))
         {
@@ -263,6 +286,7 @@ public class VRDemoGameManager : MonoBehaviour
     public void RecordMistake(string wrongToolOrAction, int penalty = 5)
     {
         string mistakeSignature = $"step{(int)currentSimulationPhase}_{wrongToolOrAction}";
+        EvaluationLogger.Instance.LogFreeTextMistake(wrongToolOrAction, penalty, !penalizedMistakes.Contains(mistakeSignature));
 
         if (!penalizedMistakes.Contains(mistakeSignature))
         {
@@ -281,6 +305,16 @@ public class VRDemoGameManager : MonoBehaviour
     /// </summary>
     public void RecordDropPenalty(string itemID, string customWarning = "")
     {
+        RecordDropPenalty(itemID, customWarning, ClinicalViolationType.Floor_Drop_Instrument);
+    }
+
+    /// <summary>
+    /// Same legacy drop penalty; matrixViolation only selects how the drop is classified in the Decision Matrix log.
+    /// </summary>
+    public void RecordDropPenalty(string itemID, string customWarning, ClinicalViolationType matrixViolation)
+    {
+        EvaluationLogger.Instance.LogViolation(matrixViolation, $"Dropped {itemID.Replace('_', ' ')}", itemID, dropPenaltyPoints, true);
+
         string cleanName = itemID.Replace('_', ' ');
         mistakeLog.Add($"Step {(int)currentSimulationPhase}: Dropped {cleanName} on floor/unsterile surface (-{dropPenaltyPoints} pts)");
 
@@ -309,6 +343,7 @@ public class VRDemoGameManager : MonoBehaviour
         if (currentRecord == null) InitializeNewRecord();
         currentRecord.finalScore = Mathf.Clamp(currentScore, 0, 100);
         currentRecord.mistakesMade = new List<string>(mistakeLog);
+        EvaluationReportExporter.Populate(currentRecord, scoringRubric, communicationDebrief);
 
         string jsonData = JsonUtility.ToJson(currentRecord, true);
         string filePath = Path.Combine(Application.persistentDataPath, $"SimulationRecord_{DateTime.Now:yyyyMMdd_HHmmss}.json");
@@ -322,5 +357,8 @@ public class VRDemoGameManager : MonoBehaviour
         {
             Debug.LogError($"[Storage] Failed to save record: {ex.Message}");
         }
+
+        if (askBeforeSaving) EvaluationReportExporter.SetPending(currentRecord, scoringRubric);
+        else EvaluationReportExporter.SaveSession(currentRecord, scoringRubric);
     }
 }

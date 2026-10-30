@@ -320,27 +320,27 @@ public static class BuildSimulationUI
 
         // Header Bar
         var header = CreateUIRect("HeaderBar", root.transform, new Vector2(0f, 0.88f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
-        var hTitle = CreateTMPChild(header.transform, "Title", "CLINICAL EVALUATION & PROTOCOL DEBRIEF", 17f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.28f, 0.80f, 0.98f), font);
+        var hTitle = CreateTMPChild(header.transform, "Title", "SIMULATION SUMMARY", 17f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.28f, 0.80f, 0.98f), font);
         hTitle.rectTransform.anchorMin = Vector2.zero;
         hTitle.rectTransform.anchorMax = Vector2.one;
         hTitle.rectTransform.offsetMin = Vector2.zero;
         hTitle.rectTransform.offsetMax = Vector2.zero;
 
-        // Page Container (Y ~ 0.14 to 0.88)
-        var pageContainer = CreateUIRect("PageContainer", root.transform, new Vector2(0.02f, 0.14f), new Vector2(0.98f, 0.88f), Vector2.zero, Vector2.zero);
+        // Page Container (Y ~ 0.20 to 0.88; the disclaimer strip sits between it and the footer)
+        var pageContainer = CreateUIRect("PageContainer", root.transform, new Vector2(0.02f, 0.20f), new Vector2(0.98f, 0.88f), Vector2.zero, Vector2.zero);
 
         // ── PAGE 1: DIALOGUE & COMMUNICATION DEBRIEF ──
         var p1 = CreateUIRect("Page_1_Dialogue", pageContainer.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         controller.page1Dialogue = p1;
 
-        var p1Rating = CreateTMPChild(p1.transform, "RatingBanner", "PATIENT COMMUNICATION: OPTIMAL (100%)", 14.5f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.20f, 0.85f, 0.55f), font);
+        var p1Rating = CreateTMPChild(p1.transform, "RatingBanner", "Communication score: 100%", 14.5f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.35f, 0.78f, 0.98f), font);
         p1Rating.rectTransform.anchorMin = new Vector2(0.02f, 0.88f);
         p1Rating.rectTransform.anchorMax = new Vector2(0.98f, 0.99f);
         p1Rating.rectTransform.offsetMin = Vector2.zero;
         p1Rating.rectTransform.offsetMax = Vector2.zero;
         controller.p1OverallRatingText = p1Rating;
 
-        var p1Arch = CreateTMPChild(p1.transform, "ArchetypeTitle", "Clinical Profile: Exemplary Patient-Centered Communicator", 12f, FontStyles.Italic, TextAlignmentOptions.TopLeft, new Color(0.75f, 0.85f, 0.95f), font);
+        var p1Arch = CreateTMPChild(p1.transform, "ArchetypeTitle", "Communication summary", 12f, FontStyles.Italic, TextAlignmentOptions.TopLeft, new Color(0.75f, 0.85f, 0.95f), font);
         p1Arch.rectTransform.anchorMin = new Vector2(0.02f, 0.79f);
         p1Arch.rectTransform.anchorMax = new Vector2(0.98f, 0.88f);
         p1Arch.rectTransform.offsetMin = Vector2.zero;
@@ -357,13 +357,13 @@ public static class BuildSimulationUI
         AddImage(debriefBox, new Color(0.08f, 0.12f, 0.18f, 0.9f));
         AddOutline(debriefBox, new Color(0.22f, 0.35f, 0.50f, 0.5f), new Vector2(1f, -1f));
 
-        var debriefLabel = CreateTMPChild(debriefBox.transform, "Label", "Preceptor Clinical Debrief Notes:", 11.5f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.40f, 0.80f, 0.98f), font);
+        var debriefLabel = CreateTMPChild(debriefBox.transform, "Label", "Communication notes:", 11.5f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.40f, 0.80f, 0.98f), font);
         debriefLabel.rectTransform.anchorMin = new Vector2(0.02f, 0.76f);
         debriefLabel.rectTransform.anchorMax = new Vector2(0.98f, 0.96f);
         debriefLabel.rectTransform.offsetMin = Vector2.zero;
         debriefLabel.rectTransform.offsetMax = Vector2.zero;
 
-        var debriefNotes = CreateTMPChild(debriefBox.transform, "Notes", "• Exemplary patient communication...", 11f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        var debriefNotes = CreateTMPChild(debriefBox.transform, "Notes", "", 11f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
         debriefNotes.rectTransform.anchorMin = new Vector2(0.02f, 0.36f);
         debriefNotes.rectTransform.anchorMax = new Vector2(0.98f, 0.76f);
         debriefNotes.rectTransform.offsetMin = Vector2.zero;
@@ -387,14 +387,14 @@ public static class BuildSimulationUI
         p2Title.rectTransform.offsetMin = Vector2.zero;
         p2Title.rectTransform.offsetMax = Vector2.zero;
 
-        var p2Status = CreateTMPChild(p2.transform, "Status", "Step 2: Wash (100%)\nStep 3: 7.5% Iodine 9-Ball Technique\nStep 4: Rinse (100%)\nStep 5: 10% Iodine Surgical Paint", 12f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        var p2Status = CreateTMPChild(p2.transform, "Status", "Steps recorded:", 12f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
         p2Status.rectTransform.anchorMin = new Vector2(0.02f, 0.40f);
         p2Status.rectTransform.anchorMax = new Vector2(0.98f, 0.86f);
         p2Status.rectTransform.offsetMin = Vector2.zero;
         p2Status.rectTransform.offsetMax = Vector2.zero;
         controller.p2StatusSummaryText = p2Status;
 
-        var p2Mistakes = CreateTMPChild(p2.transform, "Mistakes", "Mistakes: None", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.45f, 0.45f), font);
+        var p2Mistakes = CreateTMPChild(p2.transform, "Mistakes", "Recorded mistakes (0):", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
         p2Mistakes.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
         p2Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.38f);
         p2Mistakes.rectTransform.offsetMin = Vector2.zero;
@@ -411,14 +411,14 @@ public static class BuildSimulationUI
         p3Title.rectTransform.offsetMin = Vector2.zero;
         p3Title.rectTransform.offsetMax = Vector2.zero;
 
-        var p3Status = CreateTMPChild(p3.transform, "Status", "• Two-Handed Unfolding Technique: Compliant\n• Zone 1: Under Buttocks\n• Zone 2: Abdomen\n• Zone 3: Left Thigh\n• Zone 4: Right Thigh", 12f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        var p3Status = CreateTMPChild(p3.transform, "Status", "Steps recorded:", 12f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
         p3Status.rectTransform.anchorMin = new Vector2(0.02f, 0.40f);
         p3Status.rectTransform.anchorMax = new Vector2(0.98f, 0.86f);
         p3Status.rectTransform.offsetMin = Vector2.zero;
         p3Status.rectTransform.offsetMax = Vector2.zero;
         controller.p3StatusSummaryText = p3Status;
 
-        var p3Mistakes = CreateTMPChild(p3.transform, "Mistakes", "Draping Violations: None", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.45f, 0.45f), font);
+        var p3Mistakes = CreateTMPChild(p3.transform, "Mistakes", "Recorded mistakes (0):", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
         p3Mistakes.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
         p3Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.38f);
         p3Mistakes.rectTransform.offsetMin = Vector2.zero;
@@ -429,32 +429,36 @@ public static class BuildSimulationUI
         var p4 = CreateUIRect("Page_4_TableAndFinal", pageContainer.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         controller.page4TableAndFinal = p4;
 
-        var p4Title = CreateTMPChild(p4.transform, "Title", "MAYO TABLE PREPARATION & FINAL CLINICAL VERDICT", 15f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.28f, 0.80f, 0.98f), font);
+        var p4Title = CreateTMPChild(p4.transform, "Title", "MAYO TABLE PREPARATION & RECORDED SCORE", 15f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.28f, 0.80f, 0.98f), font);
         p4Title.rectTransform.anchorMin = new Vector2(0.02f, 0.88f);
         p4Title.rectTransform.anchorMax = new Vector2(0.98f, 0.98f);
         p4Title.rectTransform.offsetMin = Vector2.zero;
         p4Title.rectTransform.offsetMax = Vector2.zero;
 
-        var p4Verdict = CreateTMPChild(p4.transform, "Verdict", "OVERALL RESULT: PASS (EXCELLENT)", 16f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.20f, 0.85f, 0.55f), font);
-        p4Verdict.rectTransform.anchorMin = new Vector2(0.02f, 0.76f);
-        p4Verdict.rectTransform.anchorMax = new Vector2(0.98f, 0.88f);
-        p4Verdict.rectTransform.offsetMin = Vector2.zero;
-        p4Verdict.rectTransform.offsetMax = Vector2.zero;
-        controller.p4VerdictGradeText = p4Verdict;
-
-        var p4Score = CreateTMPChild(p4.transform, "Score", "Final Score: 100 / 100", 22f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.35f, 0.78f, 0.98f), font);
-        p4Score.rectTransform.anchorMin = new Vector2(0.02f, 0.60f);
-        p4Score.rectTransform.anchorMax = new Vector2(0.98f, 0.74f);
+        var p4Score = CreateTMPChild(p4.transform, "Score", "Recorded score: 100 / 100", 22f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.35f, 0.78f, 0.98f), font);
+        p4Score.rectTransform.anchorMin = new Vector2(0.02f, 0.74f);
+        p4Score.rectTransform.anchorMax = new Vector2(0.98f, 0.86f);
         p4Score.rectTransform.offsetMin = Vector2.zero;
         p4Score.rectTransform.offsetMax = Vector2.zero;
         controller.p4FinalScoreText = p4Score;
 
-        var p4Mistakes = CreateTMPChild(p4.transform, "Mistakes", "Itemized Deductions Ledger:\n✓ Flawless Procedure! Zero sterile violations.", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
+        var p4Mistakes = CreateTMPChild(p4.transform, "Mistakes", "Recorded mistakes (0):", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
         p4Mistakes.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
-        p4Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.58f);
+        p4Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.72f);
         p4Mistakes.rectTransform.offsetMin = Vector2.zero;
         p4Mistakes.rectTransform.offsetMax = Vector2.zero;
         controller.p4OverallMistakesListText = p4Mistakes;
+
+        // ── DISCLAIMER (shared by every page, between the pages and the footer) ──
+        var disclaimer = CreateTMPChild(root.transform, "Disclaimer", EvaluationDisclaimer.DefaultText, 10.5f, FontStyles.Normal, TextAlignmentOptions.Center, new Color(0.80f, 0.86f, 0.93f), font);
+        disclaimer.rectTransform.anchorMin = new Vector2(0.03f, 0.125f);
+        disclaimer.rectTransform.anchorMax = new Vector2(0.97f, 0.195f);
+        disclaimer.rectTransform.offsetMin = Vector2.zero;
+        disclaimer.rectTransform.offsetMax = Vector2.zero;
+        disclaimer.enableAutoSizing = true;
+        disclaimer.fontSizeMin = 8f;
+        disclaimer.fontSizeMax = 10.5f;
+        controller.disclaimerText = disclaimer;
 
         // ── FOOTER NAVIGATION BAR ──
         var footer = CreateUIRect("FooterNavBar", root.transform, new Vector2(0.02f, 0.01f), new Vector2(0.98f, 0.12f), Vector2.zero, Vector2.zero);

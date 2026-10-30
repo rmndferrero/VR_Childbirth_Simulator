@@ -45,6 +45,7 @@ public class StrokeTrackingManager : MonoBehaviour
     private Vector3 lastTouchPos = Vector3.zero;
     private float lastMistakeTriggerTime = -99f;
     private float lastUsedCottonWarningTime = -99f;
+    private float lastPickupForcepsStrokeTime = -99f;
     private float lastActiveTouchTime = -99f;
 
     public event System.Action<int, StrokeZoneDefinition> OnStrokeAdvanced;
@@ -275,6 +276,14 @@ public class StrokeTrackingManager : MonoBehaviour
             return;
         }
 
+        // Decision Matrix only: strokes must be done with the Handling forceps, never the Pickup (transfer) forceps.
+        if (cotton.currentHolder == ForcepsRole.Pickup && Time.time - lastPickupForcepsStrokeTime > 1.5f)
+        {
+            lastPickupForcepsStrokeTime = Time.time;
+            EvaluationLogger.Instance.LogMatrixOnlyViolation(ClinicalViolationType.Forceps_Transfer_Error,
+                "Stroke attempted with Pickup forceps", $"Zone {touchedZoneIndex + 1}");
+        }
+
         // Auto-soak fail-safe if cotton is not soaked
         if (!cotton.isSoaked)
         {
@@ -290,6 +299,8 @@ public class StrokeTrackingManager : MonoBehaviour
                 lastUsedCottonWarningTime = Time.time;
                 OnStrokeValidated?.Invoke("Cotton already used! Take a fresh cotton ball from the tray.", false);
                 Debug.LogWarning("[StrokeTrackingManager] Player attempted to stroke with an already used cotton ball.");
+                EvaluationLogger.Instance.LogMatrixOnlyViolation(ClinicalViolationType.Reused_Cotton_Ball,
+                    "Stroke attempted with used cotton", $"Zone {touchedZoneIndex + 1}");
             }
             return;
         }
@@ -443,6 +454,7 @@ public class StrokeTrackingManager : MonoBehaviour
 
         Debug.Log($"[StrokeTrackingManager] Stroke {finishedIndex + 1}/9 Completed: {zoneName}");
         OnStrokeValidated?.Invoke($"{zoneName} Completed!", true);
+        EvaluationLogger.Instance.LogCorrect($"Stroke {finishedIndex + 1} completed", MatrixCriterion.Technique, zoneName);
 
         // Apply Antiseptic Visual Layer (Light Blue Puddle in 7.5% Scrub / Persistent Amber in 10% Paint)
         if (sliderTracks != null && finishedIndex >= 0 && finishedIndex < sliderTracks.Length)
