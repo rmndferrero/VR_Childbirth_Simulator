@@ -1,11 +1,10 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Bedside / Table waste basin for safely discarding used cotton balls.
-/// Features:
-/// - Detects discarded cotton balls and marks them safely discarded (0 drop penalty).
-/// - Modular design: attaches to Kidney Basin or acts as an invisible drop zone.
-/// - Does not generate raw primitive meshes at runtime.
+/// Interior disposal zone for the Trash Can / Waste Basin.
+/// Strictly negates the cotton ball drop penalty when cotton is dropped inside the bin.
+/// NEVER interferes with, cancels, or modifies ForcepsController or the player's grip.
 /// </summary>
 public class WasteBasin : MonoBehaviour
 {
@@ -18,6 +17,8 @@ public class WasteBasin : MonoBehaviour
     public GameObject dirtyCottonPrefab;
     public AudioSource audioSource;
     public AudioClip discardSound;
+
+    private readonly HashSet<int> disposedCottonIds = new HashSet<int>();
 
     private void Awake()
     {
@@ -32,72 +33,64 @@ public class WasteBasin : MonoBehaviour
         col.isTrigger = true;
         if (col.size == Vector3.one || col.size == Vector3.zero)
         {
-            col.size = new Vector3(0.30f, 0.25f, 0.30f);
+            col.size = new Vector3(0.24f, 0.28f, 0.24f);
         }
     }
 
     private void OnTriggerEnter(Collider other)
     {
+        HandleCottonInZone(other);
+    }
+
+    private void OnTriggerStay(Collider other)
+    {
+        HandleCottonInZone(other);
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other == null) return;
+        CottonState cotton = other.GetComponent<CottonState>() ?? other.GetComponentInParent<CottonState>();
+        if (cotton != null && cotton.currentHolder != null && !disposedCottonIds.Contains(cotton.GetInstanceID()))
+        {
+            // Player pulled the held cotton back out of the bin without releasing it
+            cotton.isSafelyDiscarded = false;
+        }
+    }
+
+    private void HandleCottonInZone(Collider other)
+    {
         if (other == null) return;
 
-        CottonState cotton = other.GetComponent<CottonState>()
-                          ?? other.GetComponentInParent<CottonState>()
-                          ?? other.GetComponentInChildren<CottonState>();
+        // Strictly check for CottonState component only (never match 'CottonSocket' on the forceps!)
+        CottonState cotton = other.GetComponent<CottonState>() ?? other.GetComponentInParent<CottonState>();
+        if (cotton == null) return;
 
-        if (cotton != null || other.CompareTag("Cotton") || other.gameObject.name.ToLower().Contains("cotton"))
+        int id = cotton.GetInstanceID();
+
+        // Mark safely inside bin so CottonState's drop timer is negated while inside the interior trigger
+        cotton.MarkSafelyDiscardedInBin();
+
+        // Only finalize disposal once the player actually releases/drops the cotton ball (never force-cancel forceps!)
+        if (cotton.currentHolder == null && !disposedCottonIds.Contains(id))
         {
-            GameObject targetGo = cotton != null ? cotton.gameObject : other.gameObject;
-
-            if (cotton != null)
-            {
-                cotton.isSafelyDiscarded = true;
-                cotton.SetHolder(null);
-                CottonState.activeCottons.Remove(cotton);
-            }
-
-            // 1. Force XRI SelectCancel on all interactors currently holding this interactable
-            var grab = targetGo.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>()
-                    ?? targetGo.GetComponentInParent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>()
-                    ?? targetGo.GetComponentInChildren<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
-
-            if (grab != null && grab.interactionManager != null)
-            {
-                var selectingList = new System.Collections.Generic.List<UnityEngine.XR.Interaction.Toolkit.Interactors.IXRSelectInteractor>(grab.interactorsSelecting);
-                foreach (var interactor in selectingList)
-                {
-                    if (interactor != null)
-                    {
-                        grab.interactionManager.SelectCancel(interactor, grab);
-                    }
-                }
-            }
-
-            // 2. Ensure all forceps sockets in the scene drop and clear any reference to this cotton
-            var allForceps = FindObjectsByType<ForcepsController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            foreach (var f in allForceps)
-            {
-                if (f != null)
-                {
-                    f.DropCotton();
-                }
-            }
+            disposedCottonIds.Add(id);
+            CottonState.activeCottons.Remove(cotton);
 
             if (audioSource != null && discardSound != null)
             {
                 audioSource.PlayOneShot(discardSound);
             }
 
-            // Spawn the dirty, non-interactable version if configured
             if (dirtyCottonPrefab != null)
             {
-                Instantiate(dirtyCottonPrefab, targetGo.transform.position, targetGo.transform.rotation);
+                Instantiate(dirtyCottonPrefab, cotton.transform.position, cotton.transform.rotation);
             }
 
-            // Destroy the interactable cotton ball cleanly
-            Destroy(targetGo);
-
-            Debug.Log("[WasteBasin] Cotton safely released from forceps and discarded into waste basin (0 penalty).");
+            Debug.Log("[WasteBasin] Cotton ball properly disposed inside trash bin (0 penalty, forceps untouched).");
             EvaluationLogger.Instance.LogCorrect("Cotton disposed in waste basin", MatrixCriterion.Sterility);
+
+            Destroy(cotton.gameObject, 0.20f);
         }
     }
 }

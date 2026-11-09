@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using Unity.Collections;
@@ -64,6 +64,7 @@ public class GameplayCaptureService : MonoBehaviour
     {
         if (Instance != null) return Instance;
         var go = new GameObject("GameplayCaptureService");
+        DontDestroyOnLoad(go);
         return go.AddComponent<GameplayCaptureService>();
     }
 

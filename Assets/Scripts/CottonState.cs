@@ -89,14 +89,28 @@ public class CottonState : MonoBehaviour
             }
             dropCo = StartCoroutine(UnheldDropCheckRoutine());
         }
-        else if (currentHolder != null)
+        else if (currentHolder != null || isSafelyDiscarded)
         {
-            // Held by forceps -> cancel drop timer
+            // Held by forceps or already safely inside disposal bin -> cancel drop timer
             if (dropCo != null)
             {
                 StopCoroutine(dropCo);
                 dropCo = null;
             }
+        }
+    }
+
+    /// <summary>
+    /// Marks this cotton ball as safely disposed inside the trash bin,
+    /// immediately cancelling any pending drop penalty timer without touching the forceps.
+    /// </summary>
+    public void MarkSafelyDiscardedInBin()
+    {
+        isSafelyDiscarded = true;
+        if (dropCo != null)
+        {
+            StopCoroutine(dropCo);
+            dropCo = null;
         }
     }
 

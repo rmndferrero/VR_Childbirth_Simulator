@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
@@ -51,6 +51,10 @@ public enum SimulationPhase
 public class VRDemoGameManager : MonoBehaviour
 {
     public static VRDemoGameManager Instance { get; private set; }
+
+    public static SimulationRecord LastCompletedRecord { get; private set; }
+    public static CommunicationDebriefData LastDebrief { get; private set; }
+    public static SimulationScoringRubricSO LastRubric { get; private set; }
 
     [Header("Player Data")]
     public string currentPlayerName = "Guest";
@@ -227,6 +231,15 @@ public class VRDemoGameManager : MonoBehaviour
 
         Debug.Log($"[VRDemoGameManager] Step 8 Reached: Final Score = {finalScore}/100. Total mistakes logged: {mistakeLog.Count}");
 
+        SaveRecordLocally();
+
+        if (Application.CanStreamedLevelBeLoaded("SummaryScene"))
+        {
+            Debug.Log("[VRDemoGameManager] Transitioning smoothly to SummaryScene...");
+            VRSceneTransitionFader.FadeToScene("SummaryScene");
+            return;
+        }
+
         if (summaryScreenController != null)
         {
             summaryScreenController.OpenSummaryScreen();
@@ -247,8 +260,6 @@ public class VRDemoGameManager : MonoBehaviour
                 }
             }
         }
-
-        SaveRecordLocally();
     }
 
     // ── Scoring & Penalty Handling ──
@@ -341,6 +352,9 @@ public class VRDemoGameManager : MonoBehaviour
     private void SaveRecordLocally()
     {
         if (currentRecord == null) InitializeNewRecord();
+        LastCompletedRecord = currentRecord;
+        LastDebrief = communicationDebrief;
+        LastRubric = scoringRubric;
         currentRecord.finalScore = Mathf.Clamp(currentScore, 0, 100);
         currentRecord.mistakesMade = new List<string>(mistakeLog);
         EvaluationReportExporter.Populate(currentRecord, scoringRubric, communicationDebrief);

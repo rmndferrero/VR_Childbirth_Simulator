@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
@@ -34,6 +34,7 @@ public class SummaryScreenController : MonoBehaviour
     public TMP_Text textPageIndicator;
     public Button buttonNext;
     public Button buttonRestart;
+    public Button buttonMainMenu;
 
     [Header("Disclaimer (every evaluation page + report.html)")]
     [TextArea(2, 5)]
@@ -119,6 +120,11 @@ public class SummaryScreenController : MonoBehaviour
         EvaluationDisclaimer.Text = disclaimer;
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
 
+        if (SceneManager.GetActiveScene().name == "SummaryScene" || (VRDemoGameManager.Instance == null && EvaluationReportExporter.State != EvaluationReportExporter.SaveState.None))
+        {
+            OpenSummaryScreen();
+        }
+
         if (buttonBack != null)
         {
             buttonBack.onClick.RemoveAllListeners();
@@ -135,6 +141,12 @@ public class SummaryScreenController : MonoBehaviour
         {
             buttonRestart.onClick.RemoveAllListeners();
             buttonRestart.onClick.AddListener(RestartSimulation);
+        }
+
+        if (buttonMainMenu != null)
+        {
+            buttonMainMenu.onClick.RemoveAllListeners();
+            buttonMainMenu.onClick.AddListener(ReturnToMainMenu);
         }
 
         if (p5SaveButton != null)
@@ -227,7 +239,7 @@ public class SummaryScreenController : MonoBehaviour
     {
         CommunicationDebriefData debrief = VRDemoGameManager.Instance != null
             ? VRDemoGameManager.Instance.communicationDebrief
-            : null;
+            : (VRDemoGameManager.LastDebrief != null ? VRDemoGameManager.LastDebrief : null);
 
         if (debrief == null)
         {
@@ -360,7 +372,9 @@ public class SummaryScreenController : MonoBehaviour
 
     private void PopulatePage4_TableAndFinal()
     {
-        int score = VRDemoGameManager.Instance != null ? VRDemoGameManager.Instance.currentScore : 100;
+        int score = VRDemoGameManager.Instance != null 
+            ? VRDemoGameManager.Instance.currentScore 
+            : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.finalScore : 100);
 
         if (p4FinalScoreText != null)
         {
@@ -371,7 +385,7 @@ public class SummaryScreenController : MonoBehaviour
         {
             List<string> allMistakes = VRDemoGameManager.Instance != null
                 ? VRDemoGameManager.Instance.mistakeLog
-                : new List<string>();
+                : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.mistakesMade : new List<string>());
 
             p4OverallMistakesListText.text = allMistakes.Count == 0
                 ? "<b>Recorded mistakes (0):</b>\n• No mistakes were recorded by the simulation."
@@ -389,11 +403,12 @@ public class SummaryScreenController : MonoBehaviour
     private void PopulatePage5_Matrix()
     {
         var gm = VRDemoGameManager.Instance;
-        var rubric = gm != null ? gm.scoringRubric : null;
-        matrixResult = EvaluationLogger.Instance.Evaluate(rubric, gm != null ? gm.communicationDebrief : null);
+        var rubric = gm != null ? gm.scoringRubric : VRDemoGameManager.LastRubric;
+        var debrief = gm != null ? gm.communicationDebrief : VRDemoGameManager.LastDebrief;
+        matrixResult = EvaluationLogger.Instance.Evaluate(rubric, debrief);
         var config = EvaluationLogger.Instance.Matrix.ToConfig(rubric);
 
-        int legacy = gm != null ? Mathf.Clamp(gm.currentScore, 0, 100) : 100;
+        int legacy = gm != null ? Mathf.Clamp(gm.currentScore, 0, 100) : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.finalScore : 100);
 
         if (p5ScoresText != null)
         {
@@ -640,9 +655,12 @@ public class SummaryScreenController : MonoBehaviour
     private List<string> FilterMistakesByStep(int step)
     {
         var matches = new List<string>();
-        if (VRDemoGameManager.Instance == null) return matches;
+        var list = VRDemoGameManager.Instance != null
+            ? VRDemoGameManager.Instance.mistakeLog
+            : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.mistakesMade : null);
+        if (list == null) return matches;
         string prefix = $"Step {step}:";
-        foreach (var m in VRDemoGameManager.Instance.mistakeLog)
+        foreach (var m in list)
             if (m.StartsWith(prefix)) matches.Add(m);
         return matches;
     }
@@ -650,9 +668,12 @@ public class SummaryScreenController : MonoBehaviour
     private List<string> FilterMistakesByKeywords(params string[] keywords)
     {
         var matches = new List<string>();
-        if (VRDemoGameManager.Instance == null) return matches;
+        var list = VRDemoGameManager.Instance != null
+            ? VRDemoGameManager.Instance.mistakeLog
+            : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.mistakesMade : null);
+        if (list == null) return matches;
 
-        foreach (var m in VRDemoGameManager.Instance.mistakeLog)
+        foreach (var m in list)
         {
             string lower = m.ToLower();
             foreach (var kw in keywords)
@@ -671,8 +692,16 @@ public class SummaryScreenController : MonoBehaviour
     {
         EvaluationReportExporter.DiscardSession(); // no-op if already saved
         PlayPageSound();
-        Debug.Log("[SummaryScreen] Restarting simulation...");
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        Debug.Log("[SummaryScreen] Restarting simulation into MainScene...");
+        VRSceneTransitionFader.FadeToScene("MainScene");
+    }
+
+    public void ReturnToMainMenu()
+    {
+        EvaluationReportExporter.DiscardSession(); // no-op if already saved
+        PlayPageSound();
+        Debug.Log("[SummaryScreen] Returning to Main Menu...");
+        VRSceneTransitionFader.FadeToScene("MenuScene");
     }
 
     private void PlayPageSound()

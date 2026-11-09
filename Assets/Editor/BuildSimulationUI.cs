@@ -309,7 +309,7 @@ public static class BuildSimulationUI
         return colObj;
     }
 
-    private static GameObject BuildSummaryScreen(Transform parent, TMP_FontAsset font)
+    public static GameObject BuildSummaryScreen(Transform parent, TMP_FontAsset font)
     {
         var root = CreateUIRect("SummaryScreen", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         AddImage(root, new Color(0.05f, 0.08f, 0.14f, 0.98f));

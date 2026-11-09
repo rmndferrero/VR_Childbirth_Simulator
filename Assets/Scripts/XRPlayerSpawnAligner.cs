@@ -127,23 +127,27 @@ public class XRPlayerSpawnAligner : MonoBehaviour
         float desiredHeight = Mathf.Max(0.5f, eyeHeight + heightOffset);
         float physicalHeadY = xrOrigin.Camera.transform.localPosition.y;
 
-        // In VR Floor mode, physicalHeadY is your real physical height above ground (e.g. 1.75m).
-        if (physicalHeadY > 0.1f)
+        // Only lock in the standing baseline offset once VR 6DOF tracking reports a real head height (> 0.15m)
+        if (physicalHeadY > 0.15f)
         {
             calibratedHeadOffsetY = desiredHeight - physicalHeadY;
+            hasCalibratedHeight = true;
         }
         else
         {
-            calibratedHeadOffsetY = 0.0f;
-            xrOrigin.CameraYOffset = desiredHeight;
+            // Waiting for headset tracking (or running in Editor without headset)
+            calibratedHeadOffsetY = desiredHeight;
+            hasCalibratedHeight = false;
         }
 
-        hasCalibratedHeight = true;
+        xrOrigin.CameraYOffset = desiredHeight;
         ApplyCameraFloorOffset();
     }
 
     /// <summary>
-    /// LateUpdate runs AFTER XROrigin.Update(), ensuring XROrigin cannot overwrite CameraFloorOffset.
+    /// LateUpdate runs AFTER XROrigin.Update().
+    /// Keeps CameraFloorOffset at the one-time calibrated standing baseline offset so the player
+    /// spawns at the exact target height (1.546m) AND can crouch/stand 1:1 naturally without distortion.
     /// </summary>
     private void LateUpdate()
     {
@@ -155,25 +159,25 @@ public class XRPlayerSpawnAligner : MonoBehaviour
         if (xrOrigin == null || xrOrigin.CameraFloorOffsetObject == null) return;
 
         float desiredHeight = Mathf.Max(0.5f, eyeHeight + heightOffset);
+        float physicalHeadY = xrOrigin.Camera != null ? xrOrigin.Camera.transform.localPosition.y : 0.0f;
 
-        if (xrOrigin.RequestedTrackingOriginMode == XROrigin.TrackingOriginMode.Device)
+        // Keep rig base firmly at floor level (Y = 0)
+        if (Mathf.Abs(transform.position.y) > 0.001f)
         {
-            xrOrigin.CameraYOffset = desiredHeight;
-            Vector3 pos = xrOrigin.CameraFloorOffsetObject.transform.localPosition;
-            pos.y = desiredHeight;
-            xrOrigin.CameraFloorOffsetObject.transform.localPosition = pos;
+            transform.position = new Vector3(transform.position.x, 0.0f, transform.position.z);
         }
-        else
-        {
-            if (!hasCalibratedHeight)
-            {
-                RecalibrateHeightOffset();
-            }
 
-            Vector3 pos = xrOrigin.CameraFloorOffsetObject.transform.localPosition;
-            pos.y = calibratedHeadOffsetY;
-            xrOrigin.CameraFloorOffsetObject.transform.localPosition = pos;
+        // Capture standing baseline offset ONCE as soon as headset reports valid 6DOF height
+        if (!hasCalibratedHeight && physicalHeadY > 0.15f)
+        {
+            calibratedHeadOffsetY = desiredHeight - physicalHeadY;
+            hasCalibratedHeight = true;
+            AlignPlayerToSpawn();
         }
+
+        Vector3 pos = xrOrigin.CameraFloorOffsetObject.transform.localPosition;
+        pos.y = hasCalibratedHeight ? calibratedHeadOffsetY : desiredHeight;
+        xrOrigin.CameraFloorOffsetObject.transform.localPosition = pos;
     }
 
     private IEnumerator MultiPassAlignmentRoutine()
