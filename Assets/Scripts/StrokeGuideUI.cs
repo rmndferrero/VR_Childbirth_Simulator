@@ -6,8 +6,11 @@ using TMPro;
 
 /// <summary>
 /// Sleek, modern floating HUD banner tracking the 9-ball perineal sequence.
-/// Shows progress bar (0% to 100%), active stroke instructions, and 9 step nodes
-/// with checkmarks (✓) for completed zones, glowing borders for active target, and clean upcoming states.
+/// Preserves 100% visual styling consistency with DrapingGuideUI and the rest of the simulation.
+/// Supports Memory-Based Assessment Mode:
+/// - By default (0-2 mistakes), masks the active anatomical target name and direction so the student decides from memory.
+/// - Upon 3 mistakes on the active stroke, reveals the exact anatomical target name (with Left/Right notation) and technique.
+/// - Completed steps lock in with vibrant emerald green checkmarks (✓) and their confirmed anatomical names.
 /// </summary>
 public class StrokeGuideUI : MonoBehaviour
 {
@@ -28,7 +31,13 @@ public class StrokeGuideUI : MonoBehaviour
     public Transform dotsContainer;
     public Image[] stepDotImages;
     public TMP_Text[] stepDotTexts;
-    public TMP_Text[] stepDotSubTexts; // Optional zone short names (e.g. "R Majora", "Mons", etc.)
+    public TMP_Text[] stepDotSubTexts; // Zone short names (masked until completed or 3 mistakes)
+
+    [Header("Assessment & Hint Settings")]
+    [Tooltip("When true, hides the target zone name and direction in the UI until the student makes 3 mistakes on the current stroke.")]
+    public bool hideTargetUntilMistakes = true;
+    [Tooltip("Number of mistakes on the current stroke before the UI reveals the anatomical target name and direction hint.")]
+    public int mistakesToRevealTarget = 3;
 
     [Header("Colors")]
     public Color completedColor = new Color(0.10f, 0.78f, 0.45f, 1f); // Vibrant Emerald Green
@@ -42,15 +51,28 @@ public class StrokeGuideUI : MonoBehaviour
 
     private static readonly string[] ShortZoneLabels = new string[9]
     {
-        "1. R Majora",
-        "2. Mons",
-        "3. L Majora",
-        "4. Minora",
-        "5. R Thigh",
-        "6. L Thigh",
-        "7. L Buttock",
-        "8. R Buttock",
+        "1. R. Majus",
+        "2. Mons Pubis",
+        "3. L. Majus",
+        "4. Labia Minora",
+        "5. R. Thigh",
+        "6. L. Thigh",
+        "7. L. Buttock",
+        "8. R. Buttock",
         "9. Anus"
+    };
+
+    private static readonly string[] ClinicalZoneNames = new string[9]
+    {
+        "Right Labium Majus",
+        "Mons Pubis",
+        "Left Labium Majus",
+        "Labia Minora (Vestibule)",
+        "Right Inner Thigh",
+        "Left Inner Thigh",
+        "Left Buttock",
+        "Right Buttock",
+        "Anus"
     };
 
     private StrokeTrackingManager trackingManager;
@@ -63,6 +85,7 @@ public class StrokeGuideUI : MonoBehaviour
         {
             trackingManager.OnStrokeAdvanced += HandleStrokeAdvanced;
             trackingManager.OnStrokeValidated += HandleStrokeValidated;
+            trackingManager.OnMistakeZoneTriggered += HandleMistakeZoneTriggered;
         }
     }
 
@@ -72,6 +95,7 @@ public class StrokeGuideUI : MonoBehaviour
         {
             trackingManager.OnStrokeAdvanced -= HandleStrokeAdvanced;
             trackingManager.OnStrokeValidated -= HandleStrokeValidated;
+            trackingManager.OnMistakeZoneTriggered -= HandleMistakeZoneTriggered;
         }
     }
 
@@ -97,9 +121,24 @@ public class StrokeGuideUI : MonoBehaviour
         HandleStrokeAdvanced(activeIdx, activeZone);
     }
 
+    private void HandleMistakeZoneTriggered(int mistakeZoneIndex)
+    {
+        if (trackingManager == null) return;
+        int activeIdx = trackingManager.GetCurrentStrokeIndex();
+        StrokeZoneDefinition activeZone = trackingManager.GetCurrentActiveZone();
+        UpdateActiveDisplay(activeIdx, activeZone);
+    }
+
     private void HandleStrokeAdvanced(int strokeIndex, StrokeZoneDefinition activeZone)
     {
+        UpdateActiveDisplay(strokeIndex, activeZone);
+    }
+
+    private void UpdateActiveDisplay(int strokeIndex, StrokeZoneDefinition activeZone)
+    {
         float progress01 = Mathf.Clamp01((float)strokeIndex / 9f);
+        int mistakesOnCurrent = (trackingManager != null) ? trackingManager.GetActiveStrokeMistakeCount() : 0;
+        bool revealHint = !hideTargetUntilMistakes || (mistakesOnCurrent >= mistakesToRevealTarget);
 
         if (progressBarFill != null)
         {
@@ -108,25 +147,40 @@ public class StrokeGuideUI : MonoBehaviour
 
         if (progressPercentageText != null)
         {
-            progressPercentageText.text = $"{Mathf.RoundToInt(progress01 * 100f)}% ({strokeIndex}/9 Done)";
+            progressPercentageText.text = $"Progress: {strokeIndex} of 9 Cotton Balls Used ({Mathf.RoundToInt(progress01 * 100f)}%)";
         }
 
-        if (activeZone != null)
+        if (strokeIndex >= 0 && strokeIndex < 9)
         {
-            if (currentStrokeTitleText != null)
-            {
-                currentStrokeTitleText.text = $"Target {strokeIndex + 1}/9: <color=#38BDF8><b>{activeZone.zoneName}</b></color>";
-            }
+            string displayZoneName = (strokeIndex < ClinicalZoneNames.Length)
+                ? ClinicalZoneNames[strokeIndex]
+                : (activeZone != null ? activeZone.zoneName : $"Zone {strokeIndex + 1}");
 
-            if (directionInstructionText != null)
+            if (revealHint)
             {
-                if (strokeIndex == 8)
+                if (currentStrokeTitleText != null)
                 {
-                    directionInstructionText.text = "Technique: <color=#FCD34D><b>Direct Tap</b></color> (Tap contact on Anus)";
+                    string prefix = (mistakesOnCurrent >= mistakesToRevealTarget)
+                        ? $"Target {strokeIndex + 1}/9 (Remedial Hint)"
+                        : $"Target {strokeIndex + 1}/9";
+                    currentStrokeTitleText.text = $"{prefix}: <color=#38BDF8><b>{displayZoneName}</b></color>";
                 }
-                else
+
+                if (directionInstructionText != null)
                 {
-                    directionInstructionText.text = "Technique: <color=#38BDF8><b>Downward Slider</b></color> (Slide cotton top to bottom along track)";
+                    directionInstructionText.text = GetTechniqueDescription(strokeIndex);
+                }
+            }
+            else
+            {
+                if (currentStrokeTitleText != null)
+                {
+                    currentStrokeTitleText.text = $"Cotton Ball {strokeIndex + 1}/9: <color=#94A3B8><b>Identify Next Target Area from Memory</b></color>";
+                }
+
+                if (directionInstructionText != null)
+                {
+                    directionInstructionText.text = "Select the appropriate anatomical zone following the cleanest-to-dirtiest sequence.";
                 }
             }
         }
@@ -134,20 +188,33 @@ public class StrokeGuideUI : MonoBehaviour
         {
             if (currentStrokeTitleText != null)
             {
-                currentStrokeTitleText.text = "<color=#34D399><b>✓ All 9 Strokes Completed Successfully!</b></color>";
+                currentStrokeTitleText.text = "<color=#34D399><b>✓ All 9 Cotton Ball Strokes Completed Successfully!</b></color>";
             }
             if (directionInstructionText != null)
             {
                 directionInstructionText.text = "Antiseptic application complete. Proceed to next step.";
             }
             if (progressBarFill != null) progressBarFill.fillAmount = 1f;
-            if (progressPercentageText != null) progressPercentageText.text = "100% (9/9 Complete)";
+            if (progressPercentageText != null) progressPercentageText.text = "Progress: 9 of 9 Cotton Balls Used (100%)";
         }
 
-        UpdateStepDots(strokeIndex);
+        UpdateStepDots(strokeIndex, revealHint);
     }
 
-    private void UpdateStepDots(int activeIndex)
+    private string GetTechniqueDescription(int strokeIndex)
+    {
+        if (strokeIndex == 1)
+        {
+            return "Technique: <color=#38BDF8><b>Transverse Wipe</b></color> (Wipe across Mons Pubis from Left or Right)";
+        }
+        if (strokeIndex == 8)
+        {
+            return "Technique: <color=#FCD34D><b>Direct Contact Tap</b></color> (Single tap contact on Anus)";
+        }
+        return "Technique: <color=#38BDF8><b>Downward Wipe</b></color> (Slide cotton top to bottom along track)";
+    }
+
+    private void UpdateStepDots(int activeIndex, bool revealActiveHint)
     {
         if (stepDotImages == null) return;
 
@@ -157,12 +224,17 @@ public class StrokeGuideUI : MonoBehaviour
 
             if (i < activeIndex)
             {
-                // Completed -> Vibrant Emerald Green with Step Number
+                // Completed -> Vibrant Emerald Green with Checkmark (✓) and Confirmed Name
                 stepDotImages[i].color = completedColor;
                 if (stepDotTexts != null && i < stepDotTexts.Length && stepDotTexts[i] != null)
                 {
-                    stepDotTexts[i].text = $"<b>{i + 1}</b>";
+                    stepDotTexts[i].text = "<b>✓</b>";
                     stepDotTexts[i].color = Color.white;
+                }
+                if (stepDotSubTexts != null && i < stepDotSubTexts.Length && stepDotSubTexts[i] != null && i < ShortZoneLabels.Length)
+                {
+                    stepDotSubTexts[i].text = ShortZoneLabels[i];
+                    stepDotSubTexts[i].color = Color.white;
                 }
             }
             else if (i == activeIndex)
@@ -174,22 +246,26 @@ public class StrokeGuideUI : MonoBehaviour
                     stepDotTexts[i].text = $"<b>{i + 1}</b>";
                     stepDotTexts[i].color = Color.white;
                 }
+                if (stepDotSubTexts != null && i < stepDotSubTexts.Length && stepDotSubTexts[i] != null && i < ShortZoneLabels.Length)
+                {
+                    stepDotSubTexts[i].text = revealActiveHint ? ShortZoneLabels[i] : $"Ball {i + 1}";
+                    stepDotSubTexts[i].color = Color.white;
+                }
             }
             else
             {
-                // Upcoming -> Clean Dark Slate
+                // Upcoming -> Clean Dark Slate (Masked until reached/completed)
                 stepDotImages[i].color = upcomingColor;
                 if (stepDotTexts != null && i < stepDotTexts.Length && stepDotTexts[i] != null)
                 {
                     stepDotTexts[i].text = $"{i + 1}";
                     stepDotTexts[i].color = new Color(0.70f, 0.80f, 0.90f, 0.65f);
                 }
-            }
-
-            if (stepDotSubTexts != null && i < stepDotSubTexts.Length && stepDotSubTexts[i] != null && i < ShortZoneLabels.Length)
-            {
-                stepDotSubTexts[i].text = ShortZoneLabels[i];
-                stepDotSubTexts[i].color = (i <= activeIndex) ? Color.white : new Color(0.6f, 0.7f, 0.8f, 0.5f);
+                if (stepDotSubTexts != null && i < stepDotSubTexts.Length && stepDotSubTexts[i] != null && i < ShortZoneLabels.Length)
+                {
+                    stepDotSubTexts[i].text = hideTargetUntilMistakes ? $"Ball {i + 1}" : ShortZoneLabels[i];
+                    stepDotSubTexts[i].color = new Color(0.6f, 0.7f, 0.8f, 0.5f);
+                }
             }
         }
     }
@@ -199,7 +275,7 @@ public class StrokeGuideUI : MonoBehaviour
         if (isSuccess)
         {
             PlaySound(strokeSuccessClip);
-            ShowFeedback($"<color=#34D399><b>{message}</b></color>", 1.8f);
+            ShowFeedback($"<color=#34D399><b>✓ {message}</b></color>", 1.8f);
         }
         else
         {

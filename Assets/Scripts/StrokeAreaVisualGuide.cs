@@ -1,14 +1,15 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Controls the 9 scene-based 3D On-Skin Stroke Sliders during gameplay.
-/// When holding the handling forceps with cotton:
-/// - Active Stroke: Highlighted in Glowing Sky Blue with live handle bead, fill line, and direction arrow.
-/// - Upcoming Strokes: Clean, subtle roadmap tracks showing where future strokes will be placed.
-/// - Completed Strokes: Slider guides hide completely, leaving only the applied betadine on the mother's skin!
-/// - Mistake Out-of-Order Touch: The touched slider flashes Glowing Neon Red for 1.25s.
-/// When not holding forceps + cotton: All slider guides hide to keep the view clean (applied betadine remains visible).
+/// Controls the 9 scene-based 3D On-Skin Holographic Stroke Sliders during gameplay.
+/// - Keeps all 9 sliders sorted (1 to 9) in the Hierarchy under Perineal_Stroke_Sliders.
+/// - When NOT holding cotton in the handling forceps: All slider guides hide so the view is completely clean (applied Betadine puddles remain visible).
+/// - When holding soaked cotton in the handling forceps:
+///   1. Completed Strokes (i < currentActiveIndex): Visual guide disappears immediately upon stroke completion, replaced by the washable Betadine puddle on the skin!
+///   2. Remaining Candidate Strokes (Decision Stage, < 3 mistakes): Shown as subtle semi-transparent holographic blueprint (hollow concentric reticles with 100% transparent centers + delicate dashed line, no directional spoilers) so the student decides where to stroke.
+///   3. Active Wiping: Lights up in glowing cyan with progress beam and sparkle trail.
+///   4. 3-Mistake Remedial Hint: If the student fails 3 times on the active stroke, the correct stroke pulses/glows rhythmically in bright cyan.
 /// </summary>
 public class StrokeAreaVisualGuide : MonoBehaviour
 {
@@ -27,12 +28,11 @@ public class StrokeAreaVisualGuide : MonoBehaviour
     [Tooltip("Reference to the Handling Forceps. Auto-cached if null.")]
     public ForcepsController handlingForceps;
 
-    [Header("Blind Test / Examination Mode")]
-    [Tooltip("When true, hides the 9-ball stroke guide lines and nodes during normal wiping so the user must identify the anatomical zones from memory. Keeps 100% full stroke tracking logic active, and ONLY flashes Glowing Neon Red when a mistake occurs!")]
+    [Header("Decision Stage & Remedial Hint Configuration")]
+    [Tooltip("When true, all remaining candidate strokes appear as subtle semi-transparent blueprints until 3 mistakes occur (which triggers a glowing pulse hint on the correct stroke).")]
     public bool hideGuidesUnlessError = true;
 
-    [Header("Hint Configuration")]
-    [Tooltip("Number of mistakes on the current active stroke before triggering the bright glowing blue visual hint.")]
+    [Tooltip("Number of mistakes on the current active stroke before triggering the bright glowing cyan pulse hint.")]
     public int mistakesRequiredForHint = 3;
 
     private StrokeTrackingManager trackingManager;
@@ -94,6 +94,15 @@ public class StrokeAreaVisualGuide : MonoBehaviour
             var list = new List<StrokeSliderTrack>(foundSliders);
             list.Sort((a, b) => a.strokeIndex.CompareTo(b.strokeIndex));
             sliders = list.ToArray();
+
+            // Keep Hierarchy cleanly sorted 1 through 9
+            for (int i = 0; i < sliders.Length; i++)
+            {
+                if (sliders[i] != null && sliders[i].transform.parent == slidersParent)
+                {
+                    sliders[i].transform.SetSiblingIndex(i);
+                }
+            }
         }
         else
         {
@@ -196,12 +205,9 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         currentMistakeIndex = mistakeIndex;
         mistakeFlashTimer = (trackingManager != null) ? trackingManager.mistakeLockoutDuration : 1.25f;
 
-        // NOTE: Sliders DO NOT turn red! Only the VR Red POV effect flashes on mistakes.
-        // If the user fails 3 times on the active stroke, the active stroke slider will be revealed as a guide.
-
         if (activeStrokeMistakeCount >= mistakesRequiredForHint)
         {
-            Debug.Log($"[StrokeAreaVisualGuide] Hint Triggered on Stroke {currentActiveIndex + 1}! ({activeStrokeMistakeCount} mistakes made). Revealing active stroke slider as guide.");
+            Debug.Log($"[StrokeAreaVisualGuide] Hint Triggered on Stroke {currentActiveIndex + 1}! ({activeStrokeMistakeCount} mistakes made). Pulsing active stroke reticle as guide.");
         }
     }
 
@@ -248,6 +254,13 @@ public class StrokeAreaVisualGuide : MonoBehaviour
         return false;
     }
 
+    private bool IsInPerinealStrokePhase()
+    {
+        if (PerinealCareManager.Instance == null) return true;
+        var st = PerinealCareManager.Instance.currentState;
+        return st == PerinealCareState.STATE_3_IODINE_7_5_SCRUB || st == PerinealCareState.STATE_5_IODINE_10_PAINT;
+    }
+
     private void Update()
     {
         if (!Application.isPlaying) return;
@@ -261,48 +274,76 @@ public class StrokeAreaVisualGuide : MonoBehaviour
             }
         }
 
+        if (trackingManager != null)
+        {
+            currentActiveIndex = trackingManager.GetCurrentStrokeIndex();
+            activeStrokeMistakeCount = trackingManager.GetActiveStrokeMistakeCount();
+        }
+
         UpdateVisuals();
     }
 
     /// <summary>
     /// Updates all 9 sliders:
-    /// - Normal memory testing mode: Sliders are invisible by default so the user must identify the anatomical zones from memory.
-    /// - Mistakes trigger ONLY the POV red flash in the VR headset (sliders never turn red).
-    /// - 3 Mistakes Rule: If the user fails 3 times on the active stroke, that stroke's slider guide is revealed in Glowing Sky Blue.
-    /// - Completed strokes: Slider guide disappears completely, leaving only applied betadine on the skin.
+    /// - When NOT holding cotton in handling forceps (or outside stroke phases): All guides are hidden.
+    /// - Completed strokes (i < currentActiveIndex): Guides disappear immediately, replaced by the washable Betadine puddle on the skin.
+    /// - Remaining strokes (i >= currentActiveIndex):
+    ///   • Default (< 3 mistakes): Subtle semi-transparent holographic blueprint (hollow concentric rings + dashed lines) so the player decides which zone to stroke.
+    ///   • Active wiping: Bright cyan glowing beam + sparkle dust trail.
+    ///   • 3 Mistakes made on active stroke: Rhythmic breathing cyan pulse on the active stroke to guide the student.
     /// </summary>
     private void UpdateVisuals()
     {
         if (sliders == null || sliders.Length == 0) return;
 
-        bool isHoldingCotton = IsCottonInHandlingForceps();
-        bool showActiveGuide = (activeStrokeMistakeCount >= mistakesRequiredForHint) && isHoldingCotton;
+        bool showGuides = IsCottonInHandlingForceps() && IsInPerinealStrokePhase() && currentActiveIndex < 9;
+        bool shouldPulseActiveHint = activeStrokeMistakeCount >= mistakesRequiredForHint;
+        float activeProgress = (trackingManager != null) ? trackingManager.GetCurrentStrokeProgress() : 0f;
+        bool isActivelyWiping = activeProgress > 0.01f;
 
         for (int i = 0; i < sliders.Length; i++)
         {
             var slider = sliders[i];
             if (slider == null) continue;
 
-            // 1. Active Stroke Guide (only shown if failed 3 times and holding cotton)
-            if (i == currentActiveIndex && currentActiveIndex < 9)
+            // Keep GameObject active in Hierarchy so the user can always inspect/edit transforms in Scene View
+            if (!slider.gameObject.activeSelf)
             {
-                if (showActiveGuide)
-                {
-                    slider.gameObject.SetActive(true);
-                    slider.SetVisualElementsVisible(true);
-                    slider.SetVisualState(SliderVisualState.Active);
-                }
-                else
-                {
-                    slider.SetVisualElementsVisible(false);
-                    slider.gameObject.SetActive(false);
-                }
+                slider.gameObject.SetActive(true);
+            }
+
+            // 1. Not holding cotton or stroke already completed -> Hide guide (leaving only the Betadine puddle on completed strokes)
+            if (!showGuides || i < currentActiveIndex)
+            {
+                slider.SetVisualElementsVisible(false);
                 continue;
             }
 
-            // 2. All other strokes (completed or upcoming): Always hidden
-            slider.SetVisualElementsVisible(false);
-            slider.gameObject.SetActive(false);
+            // 2. Remaining uncompleted stroke while holding cotton in handling forceps
+            slider.SetVisualElementsVisible(true);
+
+            if (i == currentActiveIndex)
+            {
+                if (isActivelyWiping)
+                {
+                    slider.SetVisualState(SliderVisualState.Active);
+                }
+                else if (shouldPulseActiveHint || !hideGuidesUnlessError)
+                {
+                    slider.SetVisualState(SliderVisualState.Active);
+                    slider.UpdatePulseHint(Time.time);
+                }
+                else
+                {
+                    // Decision Stage (< 3 mistakes): Render identically to upcoming strokes so the player decides from memory!
+                    slider.SetVisualState(SliderVisualState.Upcoming);
+                }
+            }
+            else
+            {
+                // Upcoming candidate stroke: Subtle semi-transparent holographic blueprint
+                slider.SetVisualState(SliderVisualState.Upcoming);
+            }
         }
     }
 
@@ -310,6 +351,6 @@ public class StrokeAreaVisualGuide : MonoBehaviour
     public void ToggleTestMode()
     {
         hideGuidesUnlessError = !hideGuidesUnlessError;
-        Debug.Log($"[StrokeAreaVisualGuide] Test Mode (Hide Guides Unless Error) is now: {(hideGuidesUnlessError ? "ENABLED (Invisible until error)" : "DISABLED (Guided)")}");
+        Debug.Log($"[StrokeAreaVisualGuide] Decision Mode (Pulse Only After 3 Mistakes) is now: {(hideGuidesUnlessError ? "ENABLED" : "DISABLED (Always Highlight Active)")}");
     }
 }

@@ -4,7 +4,8 @@ using System.Collections.Generic;
 /// <summary>
 /// Manages the 9-ball perineal scrub/paint technique in sequence (Strokes 1 through 9).
 /// Enforces 1 cotton per stroke, automatic advancement, pure 3D slider line-segment touch/progress tracking,
-/// instant tap for anus, wrong-way detection (bottom-to-top wiping prevention), and in-world red slider alerts.
+/// bidirectional support for Stroke 2 (Mons Pubis), strict top-to-bottom directional checking for Strokes 1 & 3-8,
+/// instant tap for Stroke 9 (Anus), and immediate guide-to-puddle replacement upon stroke completion.
 /// </summary>
 public class StrokeTrackingManager : MonoBehaviour
 {
@@ -23,7 +24,7 @@ public class StrokeTrackingManager : MonoBehaviour
     private readonly HashSet<int> completedIndices = new HashSet<int>();
 
     [Header("Stroke Tuning")]
-    [Tooltip("Required progress percentage along the top-to-bottom stroke slider to complete (0.85 = 85%).")]
+    [Tooltip("Required progress percentage along the stroke slider to complete (0.85 = 85%).")]
     public float requiredProgressThreshold = 0.85f;
 
     [Tooltip("Detection radius (meters) around the slider path line on the skin (~4.5cm).")]
@@ -42,6 +43,8 @@ public class StrokeTrackingManager : MonoBehaviour
     public bool IsMistakeLockoutActive => (Time.time - lastMistakeTriggerTime) < mistakeLockoutDuration;
 
     private float currentStrokeProgress = 0f;
+    private bool isCurrentStrokeReverse = false;
+    private int activeStrokeMistakeCount = 0;
     private Vector3 lastTouchPos = Vector3.zero;
     private float lastMistakeTriggerTime = -99f;
     private float lastUsedCottonWarningTime = -99f;
@@ -82,6 +85,14 @@ public class StrokeTrackingManager : MonoBehaviour
         list.Sort((a, b) => a.strokeIndex.CompareTo(b.strokeIndex));
         sliderTracks = list.ToArray();
 
+        for (int i = 0; i < sliderTracks.Length; i++)
+        {
+            if (sliderTracks[i] != null && sliderTracks[i].strokeIndex == 1)
+            {
+                sliderTracks[i].isBidirectional = true;
+            }
+        }
+
         Debug.Log($"[StrokeTrackingManager] Cached {sliderTracks.Length} scene-based stroke sliders.");
     }
 
@@ -91,6 +102,8 @@ public class StrokeTrackingManager : MonoBehaviour
         currentStrokeIndex = 0;
         completedIndices.Clear();
         currentStrokeProgress = 0f;
+        isCurrentStrokeReverse = false;
+        activeStrokeMistakeCount = 0;
         lastTouchPos = Vector3.zero;
         lastMistakeTriggerTime = -99f;
         lastUsedCottonWarningTime = -99f;
@@ -102,9 +115,13 @@ public class StrokeTrackingManager : MonoBehaviour
         {
             foreach (var track in sliderTracks)
             {
-                if (track != null && track.puddleLayer != null)
+                if (track != null)
                 {
-                    track.puddleLayer.ResetPuddles();
+                    track.ResetProgress();
+                    if (track.puddleLayer != null)
+                    {
+                        track.puddleLayer.ResetPuddles();
+                    }
                 }
             }
         }
@@ -127,6 +144,21 @@ public class StrokeTrackingManager : MonoBehaviour
     public int GetCurrentStrokeIndex()
     {
         return currentStrokeIndex;
+    }
+
+    public int GetActiveStrokeMistakeCount()
+    {
+        return activeStrokeMistakeCount;
+    }
+
+    public float GetCurrentStrokeProgress()
+    {
+        return currentStrokeProgress;
+    }
+
+    public bool IsStrokeCompleted(int index)
+    {
+        return completedIndices.Contains(index) || index < currentStrokeIndex;
     }
 
     /// <summary>
@@ -155,6 +187,7 @@ public class StrokeTrackingManager : MonoBehaviour
             if (Time.time - lastActiveTouchTime > strokeAbandonmentTimeout)
             {
                 currentStrokeProgress = 0f;
+                isCurrentStrokeReverse = false;
                 lastTouchPos = Vector3.zero;
                 GetZoneEndpoints(currentStrokeIndex, out Vector3 startPt, out _);
                 OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 0f, startPt);
@@ -262,8 +295,9 @@ public class StrokeTrackingManager : MonoBehaviour
 
     /// <summary>
     /// Core logic for handling a cotton ball touching a stroke zone with real-time 1D slider tracking.
-    /// Requires strokes to begin at the Start Point (top) and move towards End Point (bottom).
-    /// Touching End Point first or wiping upward triggers mistake feedback.
+    /// - For Stroke 2 (Mons Pubis / isBidirectional): Allows initiation from EITHER StartPoint or EndPoint with 0 error.
+    /// - For Strokes 1, 3, 4, 5, 6, 7, 8: Strictly requires starting at StartPoint (top) and wiping to EndPoint (bottom).
+    /// - For Stroke 9 (Anus): Instant tap contact validation.
     /// </summary>
     public void ProcessCottonTouch(CottonState cotton, int touchedZoneIndex, Vector3 touchPos)
     {
@@ -325,7 +359,7 @@ public class StrokeTrackingManager : MonoBehaviour
             }
 
             // ---------------------------------------------------------------------
-            // Strokes 1 to 8: 1D Real-Time Top-to-Bottom Slider Tracking
+            // Strokes 1 to 8: 1D Real-Time Slider Tracking
             // ---------------------------------------------------------------------
             GetZoneEndpoints(currentStrokeIndex, out Vector3 startPoint, out Vector3 endPoint);
             Vector3 strokeVec = endPoint - startPoint;
@@ -338,46 +372,97 @@ public class StrokeTrackingManager : MonoBehaviour
                 return;
             }
 
-            // Project touch position onto stroke vector (0 = Top / Start, 1 = Bottom / End)
+            StrokeSliderTrack activeTrack = (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
+                ? sliderTracks[currentStrokeIndex]
+                : null;
+            bool isBidirectional = (activeTrack != null && activeTrack.isBidirectional) || (currentStrokeIndex == 1);
+
+            // Project touch position onto stroke vector (0 = StartPoint, 1 = EndPoint)
             float rawT = Vector3.Dot(touchPos - startPoint, strokeVec) / lenSq;
             float clampedT = Mathf.Clamp01(rawT);
 
             // 1. Fresh Stroke Initiation:
             if (currentStrokeProgress <= 0.01f)
             {
-                // Player touches near Start Point / Top section (t <= 0.35) -> Initialize downward wipe!
-                if (rawT <= 0.35f)
+                if (isBidirectional)
                 {
-                    currentStrokeProgress = Mathf.Max(0.05f, clampedT);
-                    Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
-                    OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
+                    // Bidirectional (StrokeSlider_2_Mons_Pubis): Accept start from EITHER StartPoint or EndPoint with zero error!
+                    if (rawT <= 0.38f)
+                    {
+                        isCurrentStrokeReverse = false;
+                        if (activeTrack != null) activeTrack.SetReverseFill(false);
+                        currentStrokeProgress = Mathf.Max(0.05f, clampedT);
+                        Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
+                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
+                    }
+                    else if (rawT >= 0.62f)
+                    {
+                        isCurrentStrokeReverse = true;
+                        if (activeTrack != null) activeTrack.SetReverseFill(true);
+                        float revT = 1.0f - clampedT;
+                        currentStrokeProgress = Mathf.Max(0.05f, revT);
+                        Vector3 handlePos = Vector3.Lerp(endPoint, startPoint, currentStrokeProgress);
+                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
+                    }
                 }
-                // If player touches near End Point / Bottom (t >= 0.55) before starting at top -> Wrong direction attempt!
-                else if (rawT >= 0.55f)
+                else
                 {
-                    HandleMistakeTouch(touchPos, currentStrokeIndex, "Incorrect technique! Start at the top and wipe downward.");
+                    // Strict Top-to-Bottom Directional Strokes (Strokes 1, 3, 4, 5, 6, 7, 8):
+                    // Player touches near Start Point / Top section (t <= 0.35) -> Initialize downward wipe!
+                    if (rawT <= 0.35f)
+                    {
+                        isCurrentStrokeReverse = false;
+                        if (activeTrack != null) activeTrack.SetReverseFill(false);
+                        currentStrokeProgress = Mathf.Max(0.05f, clampedT);
+                        Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
+                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
+                    }
+                    // If player touches near End Point / Bottom (t >= 0.55) before starting at top -> Wrong direction attempt!
+                    else if (rawT >= 0.55f)
+                    {
+                        HandleMistakeTouch(touchPos, currentStrokeIndex, "Incorrect technique! Start at the top and wipe downward.");
+                    }
                 }
             }
             // 2. Stroke In Progress:
             else
             {
-                // Advancing downward towards End Point with smooth realistic pacing (~0.8s full swipe)
-                if (clampedT > currentStrokeProgress)
+                float effectiveT = isCurrentStrokeReverse ? (1.0f - clampedT) : clampedT;
+                Vector3 effectiveStart = isCurrentStrokeReverse ? endPoint : startPoint;
+                Vector3 effectiveEnd = isCurrentStrokeReverse ? startPoint : endPoint;
+
+                // Advancing towards target opposite endpoint
+                if (effectiveT > currentStrokeProgress)
                 {
-                    currentStrokeProgress = Mathf.MoveTowards(currentStrokeProgress, clampedT, Time.deltaTime * 1.2f);
-                    Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
+                    currentStrokeProgress = Mathf.MoveTowards(currentStrokeProgress, effectiveT, Time.deltaTime * 1.2f);
+                    Vector3 handlePos = Vector3.Lerp(effectiveStart, effectiveEnd, currentStrokeProgress);
                     OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
 
-                    // Validate completion if bottom threshold reached
+                    // Validate completion if opposite endpoint threshold reached
                     if (currentStrokeProgress >= requiredProgressThreshold)
                     {
-                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, endPoint);
+                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, effectiveEnd);
                         CompleteCurrentStroke(cotton);
                         return;
                     }
                 }
-                // Reverse upward wiping check
-                else if (clampedT < currentStrokeProgress - 0.28f)
+                else if (isBidirectional)
+                {
+                    // For Mons Pubis, if the player switches ends early in the stroke, seamlessly flip direction without triggering any mistake!
+                    if (currentStrokeProgress < 0.40f && effectiveT < 0.25f)
+                    {
+                        isCurrentStrokeReverse = !isCurrentStrokeReverse;
+                        if (activeTrack != null) activeTrack.SetReverseFill(isCurrentStrokeReverse);
+                        float flippedT = 1.0f - effectiveT;
+                        currentStrokeProgress = Mathf.Max(0.05f, flippedT);
+                        Vector3 newStart = isCurrentStrokeReverse ? endPoint : startPoint;
+                        Vector3 newEnd = isCurrentStrokeReverse ? startPoint : endPoint;
+                        Vector3 handlePos = Vector3.Lerp(newStart, newEnd, currentStrokeProgress);
+                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
+                    }
+                }
+                // Reverse upward wiping check for strict unidirectional strokes
+                else if (effectiveT < currentStrokeProgress - 0.28f)
                 {
                     HandleMistakeTouch(touchPos, currentStrokeIndex, "Wipe downward from top to bottom only!");
                 }
@@ -386,7 +471,7 @@ public class StrokeTrackingManager : MonoBehaviour
             lastTouchPos = touchPos;
         }
         // =========================================================================
-        // WRONG / OUT-OF-ORDER ZONE TOUCH: Flash Red Error on touched slider
+        // WRONG / OUT-OF-ORDER ZONE TOUCH: Flash Red Error
         // =========================================================================
         else
         {
@@ -412,6 +497,8 @@ public class StrokeTrackingManager : MonoBehaviour
         lastMistakeTriggerTime = Time.time;
         lastTouchPos = Vector3.zero;
         currentStrokeProgress = 0f;
+        isCurrentStrokeReverse = false;
+        activeStrokeMistakeCount++;
 
         // Immediately reset any visual fill/bead progress on active slider
         if (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
@@ -456,19 +543,25 @@ public class StrokeTrackingManager : MonoBehaviour
         OnStrokeValidated?.Invoke($"{zoneName} Completed!", true);
         EvaluationLogger.Instance.LogCorrect($"Stroke {finishedIndex + 1} completed", MatrixCriterion.Technique, zoneName);
 
-        // Apply Antiseptic Visual Layer (Light Blue Puddle in 7.5% Scrub / Persistent Amber in 10% Paint)
+        // Immediately hide the completed stroke's visual guide and replace it with the Betadine puddle on the skin!
         if (sliderTracks != null && finishedIndex >= 0 && finishedIndex < sliderTracks.Length)
         {
             var track = sliderTracks[finishedIndex];
-            if (track != null && track.puddleLayer != null)
+            if (track != null)
             {
-                if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
+                track.ResetProgress();
+                track.SetVisualElementsVisible(false);
+
+                if (track.puddleLayer != null)
                 {
-                    track.puddleLayer.Apply7_5Puddle();
-                }
-                else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
-                {
-                    track.puddleLayer.Apply10Coating();
+                    if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
+                    {
+                        track.puddleLayer.Apply7_5Puddle();
+                    }
+                    else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
+                    {
+                        track.puddleLayer.Apply10Coating();
+                    }
                 }
             }
         }
@@ -479,9 +572,11 @@ public class StrokeTrackingManager : MonoBehaviour
             cotton.isUsed = true;
         }
 
-        // Advance to next stroke
+        // Advance to next stroke and reset mistake count for the new stroke
         currentStrokeIndex++;
         currentStrokeProgress = 0f;
+        isCurrentStrokeReverse = false;
+        activeStrokeMistakeCount = 0;
         lastTouchPos = Vector3.zero;
 
         var nextDef = GetCurrentActiveZone();

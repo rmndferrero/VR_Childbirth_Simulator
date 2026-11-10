@@ -18,45 +18,17 @@ Shader "SpatialFramework/Textured Fresnel/Standard"
             {
                 "RenderType" = "Transparent"
                 "Queue" = "Transparent"
-                "LightMode" = "UniversalForward"
+                "LightMode" = "SRPDefaultUnlit"
                 "RenderPipeline" = "UniversalPipeline"
             }
             LOD 100
 
             Name "Depth Fill"
-            Blend One One
+            Blend Zero One
             Lighting Off
-            ZTest Less
-            Offset -1, 0
-
-            ColorMask 0
-
-            CGPROGRAM
-
-                #pragma vertex vert
-                #pragma fragment fragEmpty
-
-                #include "UnityCG.cginc"
-                #include "TexturedStableFresnelCommon.cginc"
-
-            ENDCG
-        }
-
-        Pass
-        {
-            Tags
-            {
-                "RenderType" = "Transparent"
-                "Queue" = "Transparent"
-                "LightMode" = "Always"
-            }
-            LOD 100
-
-            Name "Depth Fill"
-            Blend One One
-            Lighting Off
-            ZWrite Off
-            Offset -1, 0
+            ZTest LEqual
+            ZWrite On
+            Offset -1, -1
 
             ColorMask 0
 
@@ -78,6 +50,8 @@ Shader "SpatialFramework/Textured Fresnel/Standard"
             {
                 "RenderType" = "Transparent"
                 "Queue" = "Transparent"
+                "LightMode" = "UniversalForward"
+                "RenderPipeline" = "UniversalPipeline"
             }
 
             Name "Fresnel Color"
@@ -85,7 +59,7 @@ Shader "SpatialFramework/Textured Fresnel/Standard"
             Lighting Off
             ZTest LEqual
             ZWrite Off
-            Offset -1, 0
+            Offset -1, -1
 
             CGPROGRAM
 

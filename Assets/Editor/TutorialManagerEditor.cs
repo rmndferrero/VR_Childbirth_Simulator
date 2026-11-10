@@ -12,19 +12,15 @@ public class TutorialManagerEditor : Editor
         EditorGUILayout.Space(8);
         EditorGUILayout.HelpBox(
             "SCENE VIEW VISUAL CONTROLS:\n" +
-            "• Under 'Button Highlight Anchors (Move to Adjust Glow)', drag/rotate/scale any anchor to position the cyan button glow exactly where it looks best on the controller.\n" +
-            "• Under 'Target Ring Positions', drag any RingPos_* object to set exactly where that step's ring appears in VR.\n" +
-            "• Use the 1-click buttons below to select & edit any glow or preview ring positions in Scene View instantly.",
+            "• Under 'Button Highlight Anchors (Move to Adjust Glow)', drag/rotate/scale any anchor to position the cyan button glow.\n" +
+            "• Under 'Target Ring Positions', drag any RingPos_* object (or TargetObjectHolographicRing) to set where that step's guide appears.\n" +
+            "• All UI panels and texts in the Hierarchy are directly editable without runtime overwrites.",
             MessageType.Info
         );
 
         // ── 1. Select & Edit Button Highlight Glow Anchors ──
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
         EditorGUILayout.LabelField("Adjust Button Highlight Glow in Scene View:", EditorStyles.boldLabel);
-        EditorGUILayout.HelpBox(
-            "Click a button below to focus the Scene View on that glow anchor. Use Move (W), Rotate (E), and Scale (R) tools to adjust the highlight on the 3D controller surface in real time!",
-            MessageType.None
-        );
 
         EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("🎯 Select & Edit GRIP Glow", GUILayout.Height(28)))
@@ -44,41 +40,49 @@ public class TutorialManagerEditor : Editor
 
         EditorGUILayout.Space(6);
 
-        // ── 2. Preview Target Ring Positions ──
+        // ── 2. Scene View Visibility & Direct Selection for All Step UIs ──
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-        EditorGUILayout.LabelField("Preview Ring Position in Scene View:", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("All Step UIs in Hierarchy (Click to Select & Move in Scene):", EditorStyles.boldLabel);
 
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("1. Pitcher", GUILayout.Height(26)))
+        if (GUILayout.Button("👁 Show ALL Step UIs in Scene", GUILayout.Height(26)))
         {
-            SnapRingTo(tm, tm.ringPosition_Pitcher, "GRAB PITCHER");
+            tm.SetAllEditableUIsVisibleInEditor(true);
+            SceneView.RepaintAll();
         }
-        if (GUILayout.Button("2. UI Button", GUILayout.Height(26)))
+        if (GUILayout.Button("👁 Show Only Step 1 UI", GUILayout.Height(26)))
         {
-            SnapRingTo(tm, tm.ringPosition_UIButton, "CLICK SAMPLE BUTTON");
+            tm.SetAllEditableUIsVisibleInEditor(false);
+            SceneView.RepaintAll();
         }
         EditorGUILayout.EndHorizontal();
 
+        EditorGUILayout.Space(4);
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("3A. Pickup Forceps", GUILayout.Height(24)))
-        {
-            SnapRingTo(tm, tm.ringPosition_PickupForceps, "GRAB FORCEPS");
-        }
-        if (GUILayout.Button("3B. Iodine Jar", GUILayout.Height(24)))
-        {
-            SnapRingTo(tm, tm.ringPosition_IodineJar, "DIP & HOLD [A]");
-        }
+        if (GUILayout.Button("1. Pitcher UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step1PitcherGuideUI);
+        if (GUILayout.Button("2. Click Button UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step2SampleButtonGuideUI);
+        if (GUILayout.Button("2B. Sample Panel", GUILayout.Height(24)))
+            SelectStepUI(tm.sampleButtonPanel);
         EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("3C. Transfer Area", GUILayout.Height(24)))
-        {
-            SnapRingTo(tm, tm.ringPosition_TransferCotton, "TRANSFER COTTON");
-        }
-        if (GUILayout.Button("3D. Trash Basin", GUILayout.Height(24)))
-        {
-            SnapRingTo(tm, tm.ringPosition_TrashBasin, "DROP IN BIN");
-        }
+        if (GUILayout.Button("3A. Pickup Forceps UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step3APickupForcepsGuideUI);
+        if (GUILayout.Button("3B. Iodine Jar UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step3BIodineJarGuideUI);
+        if (GUILayout.Button("3C. Handling Forceps UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step3CHandlingForcepsGuideUI);
+        EditorGUILayout.EndHorizontal();
+
+        EditorGUILayout.BeginHorizontal();
+        if (GUILayout.Button("3D. Transfer Cotton UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step3DTransferCottonGuideUI);
+        if (GUILayout.Button("3E. Trash Basin UI", GUILayout.Height(24)))
+            SelectStepUI(tm.step3ETrashBasinGuideUI);
+        if (GUILayout.Button("4. Completion Card", GUILayout.Height(24)))
+            SelectStepUI(tm.completionCard);
         EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.EndVertical();
@@ -87,18 +91,12 @@ public class TutorialManagerEditor : Editor
         DrawDefaultInspector();
     }
 
-    private void SnapRingTo(TutorialManager tm, Transform anchor, string label)
+    private void SelectStepUI(GameObject uiObj)
     {
-        if (tm == null || tm.holographicGuide == null || tm.holographicGuide.targetRingRoot == null || anchor == null)
-            return;
-
-        Undo.RecordObject(tm.holographicGuide.targetRingRoot, "Preview Ring Position");
-        tm.holographicGuide.targetRingRoot.gameObject.SetActive(true);
-        tm.holographicGuide.targetRingRoot.position = anchor.position;
-        if (tm.holographicGuide.targetRingLabel != null)
-        {
-            tm.holographicGuide.targetRingLabel.text = label;
-        }
+        if (uiObj == null) return;
+        if (!uiObj.activeSelf) uiObj.SetActive(true);
+        Selection.activeGameObject = uiObj;
+        EditorGUIUtility.PingObject(uiObj);
         SceneView.RepaintAll();
     }
 

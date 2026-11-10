@@ -31,7 +31,7 @@ fresnel_vertex vert(appdata_fresnel v)
     fresnel_vertex o;
     UNITY_SETUP_INSTANCE_ID(v);
     UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
-    o.uv = o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+    o.uv = TRANSFORM_TEX(v.uv, _MainTex);
     o.pos = UnityObjectToClipPos(v.vertex);
     o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
     o.worldNormal = UnityObjectToWorldNormal(v.normal);
@@ -46,9 +46,14 @@ half4 fragEmpty(fresnel_vertex i) : COLOR
 half4 fragRimShader(fresnel_vertex i) : COLOR
 {
     half3 worldViewDir = normalize(UnityWorldSpaceViewDir(i.worldPos));
-    half rim = saturate(((1.0 - saturate(dot(normalize(worldViewDir), i.worldNormal))) - _EdgeData.x) / (_EdgeData.y - _EdgeData.x));
+    half3 worldNormal = normalize(i.worldNormal);
+    half rim = saturate(((1.0 - saturate(dot(worldViewDir, worldNormal))) - _EdgeData.x) / max(0.0001, _EdgeData.y - _EdgeData.x));
     half processedRim = (3 + _EdgeData.z) * pow(rim, _EdgeData.z + 1) - (2 + _EdgeData.z) * pow(rim, _EdgeData.z + 2);
-    return lerp(_Color, _EdgeColor, lerp(rim, processedRim, _EdgeData.w)) * tex2D(_MainTex, i.uv).rgba;
+    half rimFactor = saturate(lerp(rim, processedRim, _EdgeData.w));
+    half4 texCol = tex2D(_MainTex, i.uv);
+    half3 baseRgb = _Color.rgb * texCol.rgb;
+    half baseAlpha = _Color.a * texCol.a;
+    return half4(lerp(baseRgb, _EdgeColor.rgb, rimFactor), lerp(baseAlpha, _EdgeColor.a, rimFactor));
 }
 
 #endif // STABLE_FRESNEL_COMMON

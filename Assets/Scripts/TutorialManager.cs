@@ -18,12 +18,9 @@ public enum TutorialState
 /// Drives the 3D Holographic Controller Guide (HolographicTutorialGuide) through:
 ///   Step 1: Grabbing the Pitcher / instrument using the controller Grip button.
 ///   Step 2: Interacting with a floating sample UI panel button using the controller Ray & Index Trigger.
-///   Step 3: Picking up an antiseptic cotton ball with Pickup Forceps, transferring it to Handling Forceps with Button A, and discarding it into the trash basin.
+///   Step 3: Picking up an antiseptic cotton ball with Pickup Forceps, grabbing Handling Forceps,
+///           transferring the cotton with Button A, and discarding it into the trash basin.
 ///   Step 4: Smooth fade transition into MainScene (Delivery Room).
-/// 
-/// Custom Target Ring Anchors:
-/// You can freely drag and position the ring anchor objects (RingPos_*) in the Unity Scene View
-/// to set exactly where each tutorial targeting ring appears.
 /// </summary>
 public class TutorialManager : MonoBehaviour
 {
@@ -36,8 +33,30 @@ public class TutorialManager : MonoBehaviour
     [Tooltip("Reference to the 3D Holographic Controller & Target Ring Guide.")]
     public HolographicTutorialGuide holographicGuide;
 
+    [Header("Editable Step World-Space Guide UIs (Visible in Hierarchy & Scene View)")]
+    [Tooltip("Step 1 Guide UI above the Pitcher.")]
+    public GameObject step1PitcherGuideUI;
+
+    [Tooltip("Step 2 Guide UI for the Sample Interactive Button.")]
+    public GameObject step2SampleButtonGuideUI;
+
+    [Tooltip("Step 3A Forceps Guide UI over the Pickup Forceps.")]
+    public GameObject step3APickupForcepsGuideUI;
+
+    [Tooltip("Step 3B Forceps Guide UI over the 7.5% Iodine Jar.")]
+    public GameObject step3BIodineJarGuideUI;
+
+    [Tooltip("Step 3C Forceps Guide UI over the Handling Forceps.")]
+    public GameObject step3CHandlingForcepsGuideUI;
+
+    [Tooltip("Step 3D Forceps Guide UI for Cotton Transfer between Forceps.")]
+    public GameObject step3DTransferCottonGuideUI;
+
+    [Tooltip("Step 3E Forceps Guide UI over the Trash Basin.")]
+    public GameObject step3ETrashBasinGuideUI;
+
     [Header("Custom Target Ring Positions (Move these in Scene View!)")]
-    [Tooltip("Move this in Scene View to set where the Pitcher ring appears.")]
+    [Tooltip("Move this in Scene View to set where the Pitcher guide label appears.")]
     public Transform ringPosition_Pitcher;
 
     [Tooltip("Move this in Scene View to set where the UI Button ring appears.")]
@@ -55,23 +74,46 @@ public class TutorialManager : MonoBehaviour
     [Tooltip("Move this in Scene View to set where the Trash Basin ring appears.")]
     public Transform ringPosition_TrashBasin;
 
-    [Header("Step 1: Grab Mechanic References")]
+    [Header("Step 1: Grab Mechanic References & Editable Texts")]
     [Tooltip("Target grabbable object on the table (e.g. Pitcher on Table 3).")]
     public XRGrabInteractable demoTool;
+    public bool showPitcherRingCircles = false;
+    [TextArea(2, 3)] public string step1GrabCalloutText = "HOLD [GRAB] BUTTON\nTO PICK UP";
+    public string step1GrabRingLabel = "GRAB PITCHER";
+    [TextArea(2, 3)] public string step1ReleaseCalloutText = "<color=#34D399>✓ PITCHER GRABBED!</color>\nRELEASE [GRAB] TO SET DOWN";
+    public string step1ReleaseRingLabel = "RELEASE TO PLACE DOWN";
 
-    [Header("Step 2: Sample UI Button Panel References")]
+    [Header("Step 2: Sample UI Button Panel References & Editable Texts")]
     [Tooltip("Floating sample panel used to teach VR ray pointing & trigger clicking.")]
     public GameObject sampleButtonPanel;
     public CanvasGroup sampleButtonCanvasGroup;
     public Button sampleActionButton;
     public TextMeshProUGUI sampleButtonLabel;
+    [TextArea(2, 3)] public string step2TriggerCalloutText = "POINT & PRESS [TRIGGER]\nBUTTON TO CLICK UI";
+    public string step2TriggerRingLabel = "CLICK SAMPLE BUTTON";
+    public string step2ButtonConfirmedText = "<color=#34D399>✓ CONFIRMED!</color>";
 
-    [Header("Step 3: Cotton Ball & Dual-Forceps Transfer References")]
+    [Header("Step 3: Cotton Ball & Dual-Forceps References & Editable Texts")]
     public ForcepsController pickupForceps;
     public ForcepsController handlingForceps;
     public Transform antisepticJarTransform;
     public Transform wasteBasinTransform;
     public WasteBasin wasteBasin;
+
+    [TextArea(2, 3)] public string step3A_PickupForcepsCallout = "1. GRAB PICKUP FORCEPS\nUSING [GRIP] BUTTON";
+    public string step3A_PickupForcepsRingLabel = "GRAB FORCEPS";
+
+    [TextArea(2, 3)] public string step3B_DipJarCallout = "2. DIP IN IODINE JAR &\nHOLD [A] TO PICK COTTON";
+    public string step3B_DipJarRingLabel = "DIP & HOLD [A]";
+
+    [TextArea(2, 3)] public string step3C_HandlingForcepsCallout = "3. GRAB HANDLING FORCEPS\nUSING [GRIP] BUTTON";
+    public string step3C_HandlingForcepsRingLabel = "GRAB HANDLING FORCEPS";
+
+    [TextArea(2, 3)] public string step3D_TransferCottonCallout = "4. BRING FORCEPS CLOSE\n& HOLD [A] TO TRANSFER";
+    public string step3D_TransferCottonRingLabel = "TRANSFER COTTON";
+
+    [TextArea(2, 3)] public string step3E_TrashDisposeCallout = "<color=#34D399>✓ COTTON TRANSFERRED!</color>\n5. RELEASE [A] OVER TRASH BIN";
+    public string step3E_TrashDisposeRingLabel = "DROP IN BIN";
 
     [Header("Step 4: Completion & Navigation UI")]
     public GameObject completionCard;
@@ -87,7 +129,9 @@ public class TutorialManager : MonoBehaviour
     private bool step1ToolReleased = false;
     private bool step2ButtonClicked = false;
 
-    private int step3SubPhase = 0; // 0 = pick cotton from jar, 1 = transfer to handling forceps, 2 = release cotton
+    private int step3SubPhase = 0; // 0 = grab pickup, 1 = dip & pick cotton, 2 = grab handling forceps, 3 = transfer cotton, 4 = dispose in bin
+    private float step3HandlingHoldTimer = 0f;
+    private bool step3HandlingAlreadyHeldAtStart = false;
     private bool isTransitioningStep = false;
 
     private void Awake()
@@ -117,7 +161,49 @@ public class TutorialManager : MonoBehaviour
     private void Start()
     {
         AutoFindMissingReferences();
+        HideAllStepGuideUIsExcept(step1PitcherGuideUI);
+        // UI styling is no longer overwritten at runtime so all Hierarchy/Scene UI edits stay intact!
         SetupStep1();
+    }
+
+    public void HideAllStepGuideUIsExcept(GameObject activeUI)
+    {
+        GameObject[] allStepUIs = new GameObject[]
+        {
+            step1PitcherGuideUI,
+            step2SampleButtonGuideUI,
+            step3APickupForcepsGuideUI,
+            step3BIodineJarGuideUI,
+            step3CHandlingForcepsGuideUI,
+            step3DTransferCottonGuideUI,
+            step3ETrashBasinGuideUI
+        };
+
+        foreach (var ui in allStepUIs)
+        {
+            if (ui != null && ui != activeUI)
+            {
+                ui.SetActive(false);
+            }
+        }
+
+        if (activeUI != null)
+        {
+            activeUI.SetActive(true);
+        }
+    }
+
+    public void SetAllEditableUIsVisibleInEditor(bool showAll)
+    {
+        if (step1PitcherGuideUI != null) step1PitcherGuideUI.SetActive(true);
+        if (step2SampleButtonGuideUI != null) step2SampleButtonGuideUI.SetActive(showAll);
+        if (sampleButtonPanel != null) sampleButtonPanel.SetActive(showAll);
+        if (step3APickupForcepsGuideUI != null) step3APickupForcepsGuideUI.SetActive(showAll);
+        if (step3BIodineJarGuideUI != null) step3BIodineJarGuideUI.SetActive(showAll);
+        if (step3CHandlingForcepsGuideUI != null) step3CHandlingForcepsGuideUI.SetActive(showAll);
+        if (step3DTransferCottonGuideUI != null) step3DTransferCottonGuideUI.SetActive(showAll);
+        if (step3ETrashBasinGuideUI != null) step3ETrashBasinGuideUI.SetActive(showAll);
+        if (completionCard != null) completionCard.SetActive(showAll);
     }
 
     public void AutoFindMissingReferences()
@@ -166,6 +252,7 @@ public class TutorialManager : MonoBehaviour
 
         if (sampleButtonPanel != null) sampleButtonPanel.SetActive(false);
         if (completionCard != null) completionCard.SetActive(false);
+        HideAllStepGuideUIsExcept(step1PitcherGuideUI);
 
         if (demoTool != null)
         {
@@ -178,17 +265,20 @@ public class TutorialManager : MonoBehaviour
         if (holographicGuide != null)
         {
             Transform target = demoTool != null ? demoTool.transform : null;
+            Transform ringUI = step1PitcherGuideUI != null ? step1PitcherGuideUI.transform : ringPosition_Pitcher;
             holographicGuide.ShowInstruction(
                 HolographicButtonType.Grip,
-                "HOLD [GRAB] BUTTON\nTO PICK UP",
-                "HOLD [GRAB] BUTTON\nTO PICK UP",
+                step1GrabCalloutText,
+                step1GrabCalloutText,
                 "GRIP",
                 target,
-                "GRAB PITCHER",
+                step1GrabRingLabel,
                 new Vector3(0f, 0.08f, 0f),
                 showLaserRay: false,
                 showTargetRing: true,
-                ringAnchor: ringPosition_Pitcher
+                ringAnchor: ringUI,
+                showRingCircles: showPitcherRingCircles,
+                preserveRingHierarchyText: false
             );
         }
     }
@@ -202,17 +292,20 @@ public class TutorialManager : MonoBehaviour
 
         if (holographicGuide != null)
         {
-            Transform target = demoTool != null ? demoTool.transform : null;
+            Transform ringUI = step1PitcherGuideUI != null ? step1PitcherGuideUI.transform : ringPosition_Pitcher;
             holographicGuide.UpdateTargetAndCallout(
                 HolographicButtonType.Grip,
-                "<color=#34D399>✓ PITCHER GRABBED!</color>\nRELEASE [GRAB] TO SET DOWN",
-                "RELEASE [GRAB] BUTTON\nTO PLACE ON TABLE",
+                step1ReleaseCalloutText,
+                step1ReleaseCalloutText,
                 "GRIP",
-                target,
-                "RELEASE TO PLACE DOWN",
+                null,
+                step1ReleaseRingLabel,
                 new Vector3(0f, 0.08f, 0f),
+                showLaserRay: false,
                 showTargetRing: true,
-                ringAnchor: ringPosition_Pitcher
+                ringAnchor: ringUI,
+                showRingCircles: showPitcherRingCircles,
+                preserveRingHierarchyText: false
             );
         }
     }
@@ -259,31 +352,31 @@ public class TutorialManager : MonoBehaviour
         step2ButtonClicked = false;
         isTransitioningStep = false;
 
+        HideAllStepGuideUIsExcept(step2SampleButtonGuideUI);
+
         if (sampleButtonPanel != null)
         {
             sampleButtonPanel.SetActive(true);
             if (sampleButtonCanvasGroup != null) sampleButtonCanvasGroup.alpha = 1f;
         }
 
-        if (sampleButtonLabel != null)
-        {
-            sampleButtonLabel.text = "PRESS [TRIGGER] TO CONFIRM";
-        }
-
         if (holographicGuide != null)
         {
             Transform target = sampleActionButton != null ? sampleActionButton.transform : (sampleButtonPanel != null ? sampleButtonPanel.transform : null);
+            Transform ringUI = step2SampleButtonGuideUI != null ? step2SampleButtonGuideUI.transform : ringPosition_UIButton;
             holographicGuide.ShowInstruction(
                 HolographicButtonType.Trigger,
-                "POINT & PRESS [TRIGGER]\nBUTTON TO CLICK UI",
-                "PRESS [TRIGGER] BUTTON\nON SAMPLE PANEL",
+                step2TriggerCalloutText,
+                step2TriggerCalloutText,
                 "TRIG",
                 target,
-                "CLICK SAMPLE BUTTON",
+                step2TriggerRingLabel,
                 new Vector3(0f, 0.02f, 0f),
                 showLaserRay: true,
                 showTargetRing: true,
-                ringAnchor: ringPosition_UIButton
+                ringAnchor: ringUI,
+                showRingCircles: true,
+                preserveRingHierarchyText: true
             );
         }
     }
@@ -293,9 +386,9 @@ public class TutorialManager : MonoBehaviour
         if (currentState != TutorialState.Step2_ButtonInteraction || step2ButtonClicked || isTransitioningStep) return;
         step2ButtonClicked = true;
 
-        if (sampleButtonLabel != null)
+        if (sampleButtonLabel != null && !string.IsNullOrEmpty(step2ButtonConfirmedText))
         {
-            sampleButtonLabel.text = "<color=#34D399>✓ CONFIRMED!</color>";
+            sampleButtonLabel.text = step2ButtonConfirmedText;
         }
 
         StartCoroutine(TransitionToStep3Routine());
@@ -311,7 +404,6 @@ public class TutorialManager : MonoBehaviour
             holographicGuide.FadeOutInstruction(0.42f);
         }
 
-        // Smoothly fade out the sample UI panel at the same time
         if (sampleButtonCanvasGroup != null)
         {
             float elapsed = 0f;
@@ -346,105 +438,143 @@ public class TutorialManager : MonoBehaviour
         ShowStep3SubPhase0_GrabPickupForceps();
     }
 
-    /// <summary>
-    /// Step 3A: Highlight and instruct the player to pick up the Pickup Forceps using [GRIP].
-    /// </summary>
     public void ShowStep3SubPhase0_GrabPickupForceps()
     {
         step3SubPhase = 0;
+        HideAllStepGuideUIsExcept(step3APickupForcepsGuideUI);
+
         if (holographicGuide != null)
         {
             Transform target = pickupForceps != null ? pickupForceps.transform : null;
+            Transform ringUI = step3APickupForcepsGuideUI != null ? step3APickupForcepsGuideUI.transform : ringPosition_PickupForceps;
 
             holographicGuide.ShowInstruction(
                 HolographicButtonType.Grip,
-                "1. GRAB PICKUP FORCEPS\nUSING [GRIP] BUTTON",
-                "HOLD [GRAB] BUTTON\nTO PICK UP",
+                step3A_PickupForcepsCallout,
+                step3A_PickupForcepsCallout,
                 "GRIP",
                 target,
-                "GRAB FORCEPS",
+                step3A_PickupForcepsRingLabel,
                 new Vector3(0f, 0.08f, -0.02f),
                 showLaserRay: false,
                 showTargetRing: true,
-                ringAnchor: ringPosition_PickupForceps
+                ringAnchor: ringUI,
+                showRingCircles: true,
+                preserveRingHierarchyText: true
             );
         }
     }
 
-    /// <summary>
-    /// Step 3B: Once holding Pickup Forceps, highlight the Iodine Jar and instruct to dip & hold [A].
-    /// </summary>
     public void ShowStep3SubPhase1_DipInIodineJar()
     {
         step3SubPhase = 1;
         PlaySound(stepCompleteClip);
+        HideAllStepGuideUIsExcept(step3BIodineJarGuideUI);
 
         if (holographicGuide != null)
         {
             Transform target = antisepticJarTransform != null ? antisepticJarTransform : null;
+            Transform ringUI = step3BIodineJarGuideUI != null ? step3BIodineJarGuideUI.transform : ringPosition_IodineJar;
 
             holographicGuide.UpdateTargetAndCallout(
                 HolographicButtonType.ButtonA,
-                "2. DIP IN IODINE JAR &\nHOLD [A] TO PICK COTTON",
-                "HOLD [A] IN JAR TO\nPICK COTTON BALL",
+                step3B_DipJarCallout,
+                step3B_DipJarCallout,
                 "BTN A",
                 target,
-                "DIP & HOLD [A]",
+                step3B_DipJarRingLabel,
                 new Vector3(0f, 0.14f, 0f),
+                showLaserRay: false,
                 showTargetRing: true,
-                ringAnchor: ringPosition_IodineJar
+                ringAnchor: ringUI,
+                showRingCircles: true,
+                preserveRingHierarchyText: true
             );
         }
     }
 
-    /// <summary>
-    /// Step 3C: Once cotton is picked up, highlight Handling Forceps and instruct to bring close & hold [A].
-    /// </summary>
-    public void ShowStep3SubPhase2_TransferCotton()
+    public void ShowStep3SubPhase2_GrabHandlingForceps()
     {
         step3SubPhase = 2;
+        step3HandlingHoldTimer = 0f;
+        step3HandlingAlreadyHeldAtStart = IsForcepsHeld(handlingForceps);
         PlaySound(stepCompleteClip);
+        HideAllStepGuideUIsExcept(step3CHandlingForcepsGuideUI);
 
         if (holographicGuide != null)
         {
             Transform target = handlingForceps != null ? handlingForceps.transform : null;
+            Transform ringUI = step3CHandlingForcepsGuideUI != null ? step3CHandlingForcepsGuideUI.transform : ringPosition_TransferCotton;
 
             holographicGuide.UpdateTargetAndCallout(
-                HolographicButtonType.ButtonA,
-                "3. BRING FORCEPS CLOSE\n& HOLD [A] TO TRANSFER",
-                "PRESS & HOLD [A] TO\nTRANSFER COTTON BALL",
-                "BTN A",
+                HolographicButtonType.Grip,
+                step3C_HandlingForcepsCallout,
+                step3C_HandlingForcepsCallout,
+                "GRIP",
                 target,
-                "TRANSFER COTTON",
-                new Vector3(0f, 0.10f, -0.02f),
+                step3C_HandlingForcepsRingLabel,
+                new Vector3(0f, 0.08f, -0.02f),
+                showLaserRay: false,
                 showTargetRing: true,
-                ringAnchor: ringPosition_TransferCotton
+                ringAnchor: ringUI,
+                showRingCircles: true,
+                preserveRingHierarchyText: true
             );
         }
     }
 
-    /// <summary>
-    /// Step 3D: Once cotton is transferred to Handling Forceps, highlight Trash Basin to discard.
-    /// </summary>
-    public void ShowStep3SubPhase3_DisposeInTrashBin()
+    public void ShowStep3SubPhase3_TransferCotton()
     {
         step3SubPhase = 3;
         PlaySound(stepCompleteClip);
+        HideAllStepGuideUIsExcept(step3DTransferCottonGuideUI);
+
+        if (holographicGuide != null)
+        {
+            Transform target = handlingForceps != null ? handlingForceps.transform : null;
+            Transform ringUI = step3DTransferCottonGuideUI != null ? step3DTransferCottonGuideUI.transform : ringPosition_TransferCotton;
+
+            holographicGuide.UpdateTargetAndCallout(
+                HolographicButtonType.ButtonA,
+                step3D_TransferCottonCallout,
+                step3D_TransferCottonCallout,
+                "BTN A",
+                target,
+                step3D_TransferCottonRingLabel,
+                new Vector3(0f, 0.10f, -0.02f),
+                showLaserRay: false,
+                showTargetRing: true,
+                ringAnchor: ringUI,
+                showRingCircles: true,
+                preserveRingHierarchyText: true
+            );
+        }
+    }
+
+    public void ShowStep3SubPhase4_DisposeInTrashBin()
+    {
+        step3SubPhase = 4;
+        PlaySound(stepCompleteClip);
+        HideAllStepGuideUIsExcept(step3ETrashBasinGuideUI);
 
         if (holographicGuide != null)
         {
             Transform target = wasteBasinTransform != null ? wasteBasinTransform : null;
+            Transform ringUI = step3ETrashBasinGuideUI != null ? step3ETrashBasinGuideUI.transform : ringPosition_TrashBasin;
 
             holographicGuide.UpdateTargetAndCallout(
                 HolographicButtonType.ButtonA,
-                "<color=#34D399>✓ COTTON TRANSFERRED!</color>\n4. RELEASE [A] OVER TRASH BIN",
-                "RELEASE [A] BUTTON\nTO DISCARD COTTON",
+                step3E_TrashDisposeCallout,
+                step3E_TrashDisposeCallout,
                 "BTN A",
                 target,
-                "DROP IN BIN",
+                step3E_TrashDisposeRingLabel,
                 new Vector3(0f, 0.22f, 0f),
+                showLaserRay: false,
                 showTargetRing: true,
-                ringAnchor: ringPosition_TrashBasin
+                ringAnchor: ringUI,
+                showRingCircles: true,
+                preserveRingHierarchyText: true
             );
         }
     }
@@ -455,7 +585,6 @@ public class TutorialManager : MonoBehaviour
 
         if (step3SubPhase == 0)
         {
-            // Sub-phase 0 -> 1: Player grabs the Pickup Forceps
             if (IsForcepsHeld(pickupForceps))
             {
                 ShowStep3SubPhase1_DipInIodineJar();
@@ -463,12 +592,10 @@ public class TutorialManager : MonoBehaviour
         }
         else if (step3SubPhase == 1)
         {
-            // Sub-phase 1 -> 2: Player dips in jar and picks up cotton ball
             if (pickupForceps != null && pickupForceps.HasCotton)
             {
-                ShowStep3SubPhase2_TransferCotton();
+                ShowStep3SubPhase2_GrabHandlingForceps();
             }
-            // If player dropped Pickup Forceps before picking cotton, guide them to grab it again
             else if (!IsForcepsHeld(pickupForceps))
             {
                 ShowStep3SubPhase0_GrabPickupForceps();
@@ -476,20 +603,51 @@ public class TutorialManager : MonoBehaviour
         }
         else if (step3SubPhase == 2)
         {
-            // Sub-phase 2 -> 3: Player transfers cotton to Handling Forceps
             if (handlingForceps != null && handlingForceps.HasCotton)
             {
-                ShowStep3SubPhase3_DisposeInTrashBin();
+                ShowStep3SubPhase4_DisposeInTrashBin();
             }
-            // If cotton was lost from Pickup Forceps before transfer, guide them back to dip in jar
             else if (pickupForceps != null && !pickupForceps.HasCotton)
             {
-                ShowStep3SubPhase1_DipInIodineJar();
+                if (!IsForcepsHeld(pickupForceps))
+                    ShowStep3SubPhase0_GrabPickupForceps();
+                else
+                    ShowStep3SubPhase1_DipInIodineJar();
+            }
+            else if (IsForcepsHeld(handlingForceps) && IsForcepsHeld(pickupForceps))
+            {
+                step3HandlingHoldTimer += Time.deltaTime;
+                float requiredHoldTime = step3HandlingAlreadyHeldAtStart ? 0.65f : 0.15f;
+                if (step3HandlingHoldTimer >= requiredHoldTime)
+                {
+                    ShowStep3SubPhase3_TransferCotton();
+                }
+            }
+            else
+            {
+                step3HandlingHoldTimer = 0f;
             }
         }
         else if (step3SubPhase == 3)
         {
-            // Sub-phase 3 -> Complete: Player releases Button A to discard cotton into trash basin
+            if (handlingForceps != null && handlingForceps.HasCotton)
+            {
+                ShowStep3SubPhase4_DisposeInTrashBin();
+            }
+            else if (pickupForceps != null && !pickupForceps.HasCotton)
+            {
+                if (!IsForcepsHeld(pickupForceps))
+                    ShowStep3SubPhase0_GrabPickupForceps();
+                else
+                    ShowStep3SubPhase1_DipInIodineJar();
+            }
+            else if (!IsForcepsHeld(handlingForceps))
+            {
+                ShowStep3SubPhase2_GrabHandlingForceps();
+            }
+        }
+        else if (step3SubPhase == 4)
+        {
             if (handlingForceps != null && !handlingForceps.HasCotton)
             {
                 StartCoroutine(CompleteTutorialRoutine());
@@ -519,6 +677,8 @@ public class TutorialManager : MonoBehaviour
         {
             yield return holographicGuide.FadeOutInstruction(0.40f);
         }
+
+        HideAllStepGuideUIsExcept(null);
 
         if (completionCard != null)
         {
