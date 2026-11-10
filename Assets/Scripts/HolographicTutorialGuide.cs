@@ -538,7 +538,7 @@ public class HolographicTutorialGuide : MonoBehaviour
             currentRingAnchor = ringAnchor;
         }
 
-        isTargetRingVisible = showTargetRing && (targetObject != null || currentRingAnchor != null || anchorIsDedicatedUI);
+        isTargetRingVisible = showTargetRing && (anchorIsDedicatedUI || currentRingAnchor != null || (autoSnapRingToTargetInPlayMode && targetObject != null));
         isRingCirclesVisible = showRingCircles;
         SetTargetObjectWithSilhouette(targetObject);
         currentTargetOffset = targetWorldOffset;
@@ -687,7 +687,7 @@ public class HolographicTutorialGuide : MonoBehaviour
             currentRingAnchor = ringAnchor;
         }
 
-        isTargetRingVisible = showTargetRing && (targetObject != null || currentRingAnchor != null || anchorIsDedicatedUI);
+        isTargetRingVisible = showTargetRing && (anchorIsDedicatedUI || currentRingAnchor != null || (autoSnapRingToTargetInPlayMode && targetObject != null));
         isRingCirclesVisible = showRingCircles;
         SetTargetObjectWithSilhouette(targetObject);
         currentTargetOffset = targetWorldOffset;

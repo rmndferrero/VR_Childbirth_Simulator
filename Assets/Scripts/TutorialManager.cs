@@ -256,6 +256,12 @@ public class TutorialManager : MonoBehaviour
 
         if (demoTool != null)
         {
+            demoTool.enabled = true;
+            demoTool.gameObject.layer = LayerMask.NameToLayer("Default");
+            foreach (var col in demoTool.GetComponentsInChildren<Collider>(true))
+            {
+                if (col != null) col.gameObject.layer = LayerMask.NameToLayer("Default");
+            }
             demoTool.selectEntered.RemoveListener(OnDemoToolGrabbed);
             demoTool.selectExited.RemoveListener(OnDemoToolReleased);
             demoTool.selectEntered.AddListener(OnDemoToolGrabbed);
@@ -319,6 +325,20 @@ public class TutorialManager : MonoBehaviour
         {
             demoTool.selectEntered.RemoveListener(OnDemoToolGrabbed);
             demoTool.selectExited.RemoveListener(OnDemoToolReleased);
+            // Disable demoTool interactable & move to Ignore Raycast layer so it does not occlude forceps/buttons in steps 2 & 3
+            demoTool.enabled = false;
+            demoTool.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            foreach (var col in demoTool.GetComponentsInChildren<Collider>(true))
+            {
+                if (col != null) col.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            }
+        }
+
+        if (step1PitcherGuideUI != null)
+        {
+            var txt = step1PitcherGuideUI.GetComponentInChildren<TMPro.TextMeshProUGUI>(true);
+            if (txt != null) txt.text = step1GrabRingLabel;
+            step1PitcherGuideUI.SetActive(false);
         }
 
         StartCoroutine(TransitionToStep2Routine());
@@ -338,6 +358,8 @@ public class TutorialManager : MonoBehaviour
             yield return new WaitForSeconds(0.42f);
         }
 
+        if (step1PitcherGuideUI != null) step1PitcherGuideUI.SetActive(false);
+
         yield return new WaitForSeconds(0.15f);
         SetupStep2();
     }
@@ -352,7 +374,19 @@ public class TutorialManager : MonoBehaviour
         step2ButtonClicked = false;
         isTransitioningStep = false;
 
+        // Ensure demoTool doesn't intercept UI pointer ray
+        if (demoTool != null)
+        {
+            demoTool.enabled = false;
+            demoTool.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            foreach (var col in demoTool.GetComponentsInChildren<Collider>(true))
+            {
+                if (col != null) col.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            }
+        }
+
         HideAllStepGuideUIsExcept(step2SampleButtonGuideUI);
+        if (step1PitcherGuideUI != null) step1PitcherGuideUI.SetActive(false);
 
         if (sampleButtonPanel != null)
         {
@@ -363,7 +397,10 @@ public class TutorialManager : MonoBehaviour
         if (holographicGuide != null)
         {
             Transform target = sampleActionButton != null ? sampleActionButton.transform : (sampleButtonPanel != null ? sampleButtonPanel.transform : null);
-            Transform ringUI = step2SampleButtonGuideUI != null ? step2SampleButtonGuideUI.transform : ringPosition_UIButton;
+            bool hasSampleRing = step2SampleButtonGuideUI != null;
+            Transform ringUI = hasSampleRing ? step2SampleButtonGuideUI.transform : ringPosition_UIButton;
+            bool showRing = ringUI != null;
+
             holographicGuide.ShowInstruction(
                 HolographicButtonType.Trigger,
                 step2TriggerCalloutText,
@@ -373,9 +410,9 @@ public class TutorialManager : MonoBehaviour
                 step2TriggerRingLabel,
                 new Vector3(0f, 0.02f, 0f),
                 showLaserRay: true,
-                showTargetRing: true,
+                showTargetRing: showRing,
                 ringAnchor: ringUI,
-                showRingCircles: true,
+                showRingCircles: showRing,
                 preserveRingHierarchyText: true
             );
         }
@@ -434,6 +471,17 @@ public class TutorialManager : MonoBehaviour
         currentState = TutorialState.Step3_ForcepsTransfer;
         step3SubPhase = 0;
         isTransitioningStep = false;
+
+        // Ensure demoTool doesn't intercept rays aimed at forceps on Table 3
+        if (demoTool != null)
+        {
+            demoTool.enabled = false;
+            demoTool.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            foreach (var col in demoTool.GetComponentsInChildren<Collider>(true))
+            {
+                if (col != null) col.gameObject.layer = LayerMask.NameToLayer("Ignore Raycast");
+            }
+        }
 
         ShowStep3SubPhase0_GrabPickupForceps();
     }
