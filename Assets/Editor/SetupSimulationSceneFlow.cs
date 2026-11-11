@@ -9,55 +9,14 @@ using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using UnityEngine.XR.Interaction.Toolkit.UI;
 using TMPro;
 
-[InitializeOnLoad]
+// Startup [InitializeOnLoad] / [InitializeOnLoadMethod] auto-rebuild was removed so
+// opening Unity or switching Play mode never overwrites manual TutorialScene edits.
 public static class SetupSimulationSceneFlow
 {
-    private const string AutoBuildPrefKey  = "VR_Childbirth_HoloTutorial_V9_DedicatedButtonGlowAnchors";
     private const string MenuScenePath     = "Assets/Scenes/MenuScene.unity";
     private const string TutorialScenePath = "Assets/Scenes/TutorialScene.unity";
     private const string MainScenePath     = "Assets/Scenes/MainScene.unity";
     private const string SummaryScenePath  = "Assets/Scenes/SummaryScene.unity";
-
-    static SetupSimulationSceneFlow()
-    {
-        EditorApplication.delayCall += TryAutoRebuildTutorialSceneOnce;
-        EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-    }
-
-    [InitializeOnLoadMethod]
-    private static void ForceRebuildInit()
-    {
-        EditorApplication.delayCall += TryAutoRebuildTutorialSceneOnce;
-    }
-
-    private static void OnPlayModeStateChanged(PlayModeStateChange state)
-    {
-        if (state == PlayModeStateChange.EnteredEditMode)
-        {
-            EditorApplication.delayCall += TryAutoRebuildTutorialSceneOnce;
-        }
-    }
-
-    private static void TryAutoRebuildTutorialSceneOnce()
-    {
-        if (EditorApplication.isCompiling || EditorApplication.isUpdating)
-        {
-            EditorApplication.delayCall += TryAutoRebuildTutorialSceneOnce;
-            return;
-        }
-
-        if (EditorApplication.isPlayingOrWillChangePlaymode)
-        {
-            EditorApplication.delayCall += TryAutoRebuildTutorialSceneOnce;
-            return;
-        }
-
-        if (!SessionState.GetBool(AutoBuildPrefKey, false))
-        {
-            SessionState.SetBool(AutoBuildPrefKey, true);
-            RebuildTutorialSceneOnly();
-        }
-    }
 
     [MenuItem("Tools/1. Rebuild Modular Tutorial Scene NOW")]
     [MenuItem("Tools/Rebuild Holographic Tutorial Scene Only (Reset Positions)")]
