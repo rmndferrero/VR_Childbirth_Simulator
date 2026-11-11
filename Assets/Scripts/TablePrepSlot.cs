@@ -127,6 +127,49 @@ public class TablePrepSlot : MonoBehaviour
     [Header("Per-Tool Snap References (Multi-Tool / Blind Slotting)")]
     [SerializeField] private System.Collections.Generic.List<PerToolSnapReference> perToolReferences = new System.Collections.Generic.List<PerToolSnapReference>();
 
+    public System.Collections.Generic.IReadOnlyList<PerToolSnapReference> PerToolReferences => perToolReferences;
+
+    public bool HasPerToolReference(string toolID)
+    {
+        if (perToolReferences == null || string.IsNullOrEmpty(toolID)) return false;
+        string targetKey = CanonicalizeToolKey(toolID);
+        for (int i = 0; i < perToolReferences.Count; i++)
+        {
+            if (CanonicalizeToolKey(perToolReferences[i].toolID) == targetKey) return true;
+        }
+        return false;
+    }
+
+    public void SetPerToolReference(string toolID, Vector3 positionOffset, Vector3 eulerAngles, bool useLocalRotation = true)
+    {
+        if (string.IsNullOrEmpty(toolID)) return;
+        if (perToolReferences == null)
+        {
+            perToolReferences = new System.Collections.Generic.List<PerToolSnapReference>();
+        }
+
+        string targetKey = CanonicalizeToolKey(toolID);
+        PerToolSnapReference entry = new PerToolSnapReference
+        {
+            toolID = toolID,
+            referenceTransform = null,
+            positionOffset = positionOffset,
+            eulerAngles = eulerAngles,
+            useLocalRotation = useLocalRotation
+        };
+
+        for (int i = 0; i < perToolReferences.Count; i++)
+        {
+            if (CanonicalizeToolKey(perToolReferences[i].toolID) == targetKey)
+            {
+                perToolReferences[i] = entry;
+                return;
+            }
+        }
+
+        perToolReferences.Add(entry);
+    }
+
     /// <summary>
     /// Resolves the target world position and rotation for the supplied instrument:
     /// 1) Explicit perToolReferences entry, 2) User-placed duplicate child inside this slot,
@@ -320,6 +363,16 @@ public class TablePrepSlot : MonoBehaviour
             case "gauze":
             case "gauzepack":
                 return "gauze_pack";
+            case "scalpel":
+            case "scalpel01":
+                return "scalpel";
+            case "curette":
+            case "curette01":
+                return "curette";
+            case "tongs":
+            case "thumbforcep":
+            case "thumbforceps":
+                return "thumb_forceps";
             default:
                 return compact;
         }

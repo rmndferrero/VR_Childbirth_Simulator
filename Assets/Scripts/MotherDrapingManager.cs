@@ -19,12 +19,12 @@ public class DrapeSlot
 }
 
 /// <summary>
-/// Controls the 4-step sterile draping sequence on the mother:
-/// 1. Under Buttocks -> 2. Abdominal -> 3. Left Leg -> 4. Right Leg.
+/// Controls the sterile draping sequence on the mother and Mayo Stand:
+/// 1. Under Buttocks -> 2. Abdominal -> 3/4. Left or Right Leg (either order) -> 5. Mayo Stand.
 /// Features:
-/// - 4-Zone Blue Holographic Guides (active target pulses in bright cyan, upcoming in soft blue).
-/// - Permanent green placed drapes on correct placement.
-/// - Flashes glowing RED if placed on a wrong / out-of-order zone.
+/// - Uniform blue holographic guides across unplaced zones.
+/// - Permanent placed 3D drapes (Adjusted_Drapes) on correct placement.
+/// - Flashes glowing RED if placed on an out-of-order zone.
 /// - Spawns fresh linen on Table 1 after every step from master cached template.
 /// </summary>
 public class MotherDrapingManager : MonoBehaviour
@@ -71,6 +71,7 @@ public class MotherDrapingManager : MonoBehaviour
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
 
         LoadAssetsIfNull();
+        ResolveAdjustedDrapeModelsIfNeeded();
         CacheInitialLinenTransform();
     }
 
@@ -146,6 +147,7 @@ public class MotherDrapingManager : MonoBehaviour
         {
             AlignAndFixDrapeSlotVisuals();
         }
+        ResolveAdjustedDrapeModelsIfNeeded();
         HideAllDrapesAndGhosts();
     }
 
@@ -224,14 +226,20 @@ public class MotherDrapingManager : MonoBehaviour
             AlignAndFixDrapeSlotVisuals();
         }
 
+        ResolveAdjustedDrapeModelsIfNeeded();
+
         foreach (var slot in drapeSlots)
         {
             slot.isDraped = false;
-            if (slot.placeholderGreenDrape != null) slot.placeholderGreenDrape.SetActive(false);
-            if (slot.final3DModelPrefabOrObject != null) slot.final3DModelPrefabOrObject.SetActive(false);
+            if (slot.mistakeFlashCo != null)
+            {
+                StopCoroutine(slot.mistakeFlashCo);
+                slot.mistakeFlashCo = null;
+            }
+            SetSlotPlacedVisual(slot, false);
         }
 
-        // Show all 4 static blue guides on patient
+        // Show static blue guides on remaining zones
         UpdateAllZoneVisualGuides();
 
         if (MayoStandDrapeSocket.Instance != null)
@@ -249,13 +257,13 @@ public class MotherDrapingManager : MonoBehaviour
             TablePrepManager.Instance.isMayoDraped = false;
         }
 
-        Debug.Log("[MotherDrapingManager] Sterile Draping Phase started: Target 1 of 4 (Under Buttocks). Use both hands to drape.");
+        Debug.Log("[MotherDrapingManager] Sterile Draping Phase started: Target 1 (Under Buttocks). Use both hands to drape.");
     }
 
     /// <summary>
-    /// Updates visual guide states for all 4 zones.
-    /// All unplaced zones show uniform static blue guides (no pulsing clue).
-    /// Placed zones show permanent green drapes.
+    /// Updates visual guide states for all zones.
+    /// All unplaced zones show uniform static blue guides.
+    /// Placed zones show the assigned 3D drape model (Adjusted_Drapes), keeping white placeholders disabled.
     /// </summary>
     public void UpdateAllZoneVisualGuides()
     {
@@ -265,14 +273,14 @@ public class MotherDrapingManager : MonoBehaviour
 
             if (slot.isDraped)
             {
-                // Placed -> Show permanent green drape, hide ghost guide
+                // Placed -> Show permanent drape (preferring Adjusted_Drapes over white cube placeholder), hide ghost guide
                 if (slot.ghostIndicatorObject != null) slot.ghostIndicatorObject.SetActive(false);
-                if (slot.placeholderGreenDrape != null) slot.placeholderGreenDrape.SetActive(true);
+                SetSlotPlacedVisual(slot, true);
             }
             else if (isDrapingActive && !isDrapingComplete)
             {
                 // Unplaced Zone -> Uniform, static soft blue guide across all remaining zones
-                if (slot.placeholderGreenDrape != null) slot.placeholderGreenDrape.SetActive(false);
+                SetSlotPlacedVisual(slot, false);
                 if (slot.ghostIndicatorObject != null)
                 {
                     SetGhostMaterial(slot.ghostIndicatorObject, inactiveGuideMaterial != null ? inactiveGuideMaterial : ghostMaterial);
@@ -282,9 +290,68 @@ public class MotherDrapingManager : MonoBehaviour
             else
             {
                 if (slot.ghostIndicatorObject != null) slot.ghostIndicatorObject.SetActive(false);
-                if (slot.placeholderGreenDrape != null) slot.placeholderGreenDrape.SetActive(false);
+                SetSlotPlacedVisual(slot, false);
             }
         }
+    }
+
+    /// <summary>
+    /// Returns true if placing a drape on slotIndex obeys:
+    /// 1. Under Buttocks -> 2. Abdominal -> 3/4. Left or Right Leg (either order) -> 5. Mayo Stand.
+    /// </summary>
+    public bool IsSlotValidNext(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= drapeSlots.Count) return false;
+        if (drapeSlots[slotIndex] == null || drapeSlots[slotIndex].isDraped) return false;
+
+        if (slotIndex == 0) return true;
+        if (slotIndex == 1) return drapeSlots[0].isDraped;
+
+        // Legs (indices 2 and 3) can be placed in either order once Buttocks (0) and Abdominal (1) are complete.
+        if (slotIndex == 2 || slotIndex == 3)
+        {
+            return drapeSlots.Count > 1 && drapeSlots[0].isDraped && drapeSlots[1].isDraped;
+        }
+
+        // Subsequent slots (e.g., index 4 = Mayo Stand) require all mother draping zones (0..3) and earlier slots.
+        int motherCount = Mathf.Min(4, drapeSlots.Count);
+        for (int i = 0; i < motherCount; i++)
+        {
+            if (!drapeSlots[i].isDraped) return false;
+        }
+        for (int i = 4; i < slotIndex; i++)
+        {
+            if (!drapeSlots[i].isDraped) return false;
+        }
+        return true;
+    }
+
+    private int ComputeNextCanonicalTargetIndex()
+    {
+        for (int i = 0; i < drapeSlots.Count; i++)
+        {
+            if (drapeSlots[i] != null && !drapeSlots[i].isDraped)
+            {
+                return i;
+            }
+        }
+        return drapeSlots.Count;
+    }
+
+    public string GetExpectedStepDescription()
+    {
+        if (drapeSlots.Count > 0 && !drapeSlots[0].isDraped) return "1. Under Buttocks";
+        if (drapeSlots.Count > 1 && !drapeSlots[1].isDraped) return "2. Abdomen";
+
+        bool leftPending = drapeSlots.Count > 2 && !drapeSlots[2].isDraped;
+        bool rightPending = drapeSlots.Count > 3 && !drapeSlots[3].isDraped;
+        if (leftPending && rightPending) return "Left or Right Leg (either order)";
+        if (leftPending) return "Left Leg";
+        if (rightPending) return "Right Leg";
+
+        int nextIdx = ComputeNextCanonicalTargetIndex();
+        if (nextIdx < drapeSlots.Count) return drapeSlots[nextIdx].slotName;
+        return "Complete";
     }
 
     /// <summary>
@@ -334,8 +401,8 @@ public class MotherDrapingManager : MonoBehaviour
             }
         }
 
-        // 2. Sequence Check: Must place drapes in exact clinical order
-        if (slotIndex != currentTargetIndex)
+        // 2. Sequence Check: 1. Under Buttocks -> 2. Abdomen -> Left or Right Leg (either order) -> Mayo Stand
+        if (!IsSlotValidNext(slotIndex))
         {
             FlashMistakeRed(slotIndex);
 
@@ -353,7 +420,7 @@ public class MotherDrapingManager : MonoBehaviour
             return false;
         }
 
-        // 3. Successfully Place Drape on this correct active zone
+        // 3. Successfully Place Drape on this valid zone
         targetSlot.isDraped = true;
 
         if (targetSlot.ghostIndicatorObject != null)
@@ -361,15 +428,8 @@ public class MotherDrapingManager : MonoBehaviour
             targetSlot.ghostIndicatorObject.SetActive(false);
         }
 
-        // Show permanent green placed drape
-        if (targetSlot.final3DModelPrefabOrObject != null)
-        {
-            targetSlot.final3DModelPrefabOrObject.SetActive(true);
-        }
-        else if (targetSlot.placeholderGreenDrape != null)
-        {
-            targetSlot.placeholderGreenDrape.SetActive(true);
-        }
+        // Show permanent placed drape (preferring Adjusted_Drapes over white cube placeholder)
+        SetSlotPlacedVisual(targetSlot, true);
 
         // Unlock Mayo Table if this was the Mayo Stand Drape
         if (targetSlot.slotName.Contains("Mayo") || slotIndex == 4)
@@ -395,7 +455,7 @@ public class MotherDrapingManager : MonoBehaviour
             audioSource.PlayOneShot(drapePlaceAudio);
         }
 
-        int completedStep = currentTargetIndex + 1;
+        int completedStep = GetDrapedCount();
         Debug.Log($"[MotherDrapingManager] Placed Drape: {targetSlot.slotName} ({completedStep}/{drapeSlots.Count})");
         EvaluationLogger.Instance.LogCorrect($"Drape {completedStep} placed", MatrixCriterion.Sequence, targetSlot.slotName);
 
@@ -421,11 +481,11 @@ public class MotherDrapingManager : MonoBehaviour
             Destroy(linenObj);
         }
 
-        // Advance to next target slot
-        currentTargetIndex++;
+        // Advance to next remaining target slot
+        currentTargetIndex = ComputeNextCanonicalTargetIndex();
         UpdateAllZoneVisualGuides();
 
-        // 4. Spawn fresh linen on Table 1 for next drape, or start Mayo Stand draping
+        // 4. Spawn fresh linen on Table 1 for next drape, or complete all draping
         if (currentTargetIndex < drapeSlots.Count)
         {
             SpawnNextLinenOnTable1();
@@ -482,13 +542,13 @@ public class MotherDrapingManager : MonoBehaviour
 
             if (DrapingGuideUI.Instance != null)
             {
-                DrapingGuideUI.Instance.ShowMistakeFeedback("Out of order! Drape in order: 1. Under Buttocks -> 2. Abdomen -> 3. Left Thigh -> 4. Right Thigh!");
+                DrapingGuideUI.Instance.ShowMistakeFeedback("Out of order! Drape: 1. Under Buttocks -> 2. Abdomen -> Left or Right Leg (either order) -> Mayo Stand!");
             }
 
             if (VRDemoGameManager.Instance != null)
             {
-                VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.Out_Of_Order_Drape, $"Target: Zone {currentTargetIndex + 1}, Placed: Zone {slotIndex + 1}");
-                VRDemoGameManager.Instance.ShowWarning("Out of order! Drape in order: 1. Under Buttocks -> 2. Abdomen -> 3. Left Thigh -> 4. Right Thigh!");
+                VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.Out_Of_Order_Drape, $"Target: {GetExpectedStepDescription()}, Placed: {slot.slotName}");
+                VRDemoGameManager.Instance.ShowWarning("Out of order! Drape: 1. Under Buttocks -> 2. Abdomen -> Left or Right Leg (either order) -> Mayo Stand!");
             }
         }
 
@@ -505,8 +565,7 @@ public class MotherDrapingManager : MonoBehaviour
 
             yield return new WaitForSeconds(1.25f);
 
-            int slotIdx = drapeSlots.IndexOf(slot);
-            Material restoreMat = (slotIdx == currentTargetIndex) ? ghostMaterial : (inactiveGuideMaterial != null ? inactiveGuideMaterial : ghostMaterial);
+            Material restoreMat = inactiveGuideMaterial != null ? inactiveGuideMaterial : ghostMaterial;
             SetGhostMaterial(slot.ghostIndicatorObject, restoreMat);
 
             if (!slot.isDraped && isDrapingActive)
@@ -569,16 +628,189 @@ public class MotherDrapingManager : MonoBehaviour
             }
         }
 
-        Debug.Log($"[MotherDrapingManager] Spawned fresh linen for Step {currentTargetIndex + 1} ({drapeSlots[currentTargetIndex].slotName}) on Table 1.");
+        Debug.Log($"[MotherDrapingManager] Spawned fresh linen for next step ({GetExpectedStepDescription()}) on Table 1.");
     }
 
     public void HideAllDrapesAndGhosts()
     {
+        ResolveAdjustedDrapeModelsIfNeeded();
         foreach (var slot in drapeSlots)
         {
+            if (slot.mistakeFlashCo != null)
+            {
+                StopCoroutine(slot.mistakeFlashCo);
+                slot.mistakeFlashCo = null;
+            }
             if (slot.ghostIndicatorObject != null) slot.ghostIndicatorObject.SetActive(false);
-            if (slot.placeholderGreenDrape != null) slot.placeholderGreenDrape.SetActive(false);
-            if (slot.final3DModelPrefabOrObject != null) slot.final3DModelPrefabOrObject.SetActive(false);
+            SetSlotPlacedVisual(slot, false);
+        }
+    }
+
+    /// <summary>
+    /// Binds unassigned slots 0..3 to each zone's placed drape child (below GhostIndicator / under targetPoint)
+    /// or falls back to an Adjusted_Drapes root in the scene, without altering any transforms.
+    /// </summary>
+    public void ResolveAdjustedDrapeModelsIfNeeded()
+    {
+        bool anyMissing = false;
+        int limit = Mathf.Min(4, drapeSlots.Count);
+        for (int i = 0; i < limit; i++)
+        {
+            if (drapeSlots[i] != null && drapeSlots[i].final3DModelPrefabOrObject == null)
+            {
+                anyMissing = true;
+                break;
+            }
+        }
+
+        if (!anyMissing) return;
+
+        Transform adjustedRoot = FindAdjustedDrapesRoot();
+        for (int i = 0; i < limit; i++)
+        {
+            if (drapeSlots[i] == null || drapeSlots[i].final3DModelPrefabOrObject != null) continue;
+            GameObject resolved = ResolvePlacedDrapeForSlot(drapeSlots[i], drapeSlots, i, adjustedRoot);
+            if (resolved != null)
+            {
+                drapeSlots[i].final3DModelPrefabOrObject = resolved;
+            }
+        }
+    }
+
+    public static Transform FindAdjustedDrapesRoot()
+    {
+        var allTransforms = FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < allTransforms.Length; i++)
+        {
+            if (allTransforms[i] != null && allTransforms[i].name == "Adjusted_Drapes")
+            {
+                return allTransforms[i];
+            }
+        }
+        return null;
+    }
+
+    public static GameObject ResolvePlacedDrapeForSlot(DrapeSlot slot, IList<DrapeSlot> allSlots, int slotIndex, Transform adjustedRoot = null)
+    {
+        if (slot == null) return null;
+
+        // Priority 1: Drape mesh placed directly inside this zone (e.g., under targetPoint below GhostIndicator)
+        Transform zoneParent = slot.targetPoint != null
+            ? slot.targetPoint
+            : (slot.ghostIndicatorObject != null ? slot.ghostIndicatorObject.transform.parent : null);
+
+        if (zoneParent != null)
+        {
+            for (int c = 0; c < zoneParent.childCount; c++)
+            {
+                Transform child = zoneParent.GetChild(c);
+                if (!IsEligibleZoneDrapeChild(child, slot, allSlots)) continue;
+                if (child.GetComponentInChildren<Renderer>(true) != null)
+                {
+                    return child.gameObject;
+                }
+            }
+        }
+
+        // Priority 2: Adjusted_Drapes container by slot index / canonical name variants
+        if (adjustedRoot != null && slotIndex >= 0 && slotIndex < AdjustedDrapeNameVariants.Length)
+        {
+            string[] candidates = AdjustedDrapeNameVariants[slotIndex];
+            for (int n = 0; n < candidates.Length; n++)
+            {
+                Transform match = adjustedRoot.Find(candidates[n]);
+                if (match != null) return match.gameObject;
+            }
+        }
+
+        return null;
+    }
+
+    private static readonly string[][] AdjustedDrapeNameVariants =
+    {
+        new[] { "Drape_Buttocks", "Buttocks" },
+        new[] { "Drape_Abdomen", "Drape_Abdominal" },
+        new[] { "Drape_LeftLeg", "Drape_Left leg", "Drape_Left Leg" },
+        new[] { "Drape_RightLeg", "Drape_Right Leg", "Drape_Right leg" }
+    };
+
+    private static bool IsEligibleZoneDrapeChild(Transform candidate, DrapeSlot ownerSlot, IList<DrapeSlot> allSlots)
+    {
+        if (candidate == null) return false;
+        GameObject go = candidate.gameObject;
+        if (go == ownerSlot.ghostIndicatorObject || go == ownerSlot.placeholderGreenDrape) return false;
+
+        if (allSlots != null)
+        {
+            for (int i = 0; i < allSlots.Count; i++)
+            {
+                var s = allSlots[i];
+                if (s == null) continue;
+                if (s.targetPoint == candidate || s.ghostIndicatorObject == go) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void SetSlotPlacedVisual(DrapeSlot slot, bool visible)
+    {
+        if (slot == null) return;
+
+        if (slot.final3DModelPrefabOrObject != null)
+        {
+            if (visible)
+            {
+                EnsureAncestorsActiveWithoutExposingUnplacedSiblings(slot.final3DModelPrefabOrObject.transform);
+            }
+            slot.final3DModelPrefabOrObject.SetActive(visible);
+
+            if (slot.placeholderGreenDrape != null && slot.placeholderGreenDrape != slot.final3DModelPrefabOrObject)
+            {
+                slot.placeholderGreenDrape.SetActive(false);
+            }
+        }
+        else if (slot.placeholderGreenDrape != null)
+        {
+            slot.placeholderGreenDrape.SetActive(visible);
+        }
+    }
+
+    private void EnsureAncestorsActiveWithoutExposingUnplacedSiblings(Transform targetChild)
+    {
+        if (targetChild == null) return;
+
+        // If an Adjusted_Drapes parent starts inactive, ensure its undraped children are off before activating it.
+        Transform parent = targetChild.parent;
+        while (parent != null)
+        {
+            if (!parent.gameObject.activeSelf && parent.name == "Adjusted_Drapes")
+            {
+                for (int c = 0; c < parent.childCount; c++)
+                {
+                    Transform sibling = parent.GetChild(c);
+                    if (sibling == targetChild) continue;
+                    bool keepActive = false;
+                    for (int s = 0; s < drapeSlots.Count; s++)
+                    {
+                        var slot = drapeSlots[s];
+                        if (slot != null && slot.isDraped && slot.final3DModelPrefabOrObject == sibling.gameObject)
+                        {
+                            keepActive = true;
+                            break;
+                        }
+                    }
+                    if (!keepActive)
+                    {
+                        sibling.gameObject.SetActive(false);
+                    }
+                }
+            }
+            if (!parent.gameObject.activeSelf)
+            {
+                parent.gameObject.SetActive(true);
+            }
+            parent = parent.parent;
         }
     }
 }

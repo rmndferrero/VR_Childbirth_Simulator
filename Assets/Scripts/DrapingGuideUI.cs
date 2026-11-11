@@ -5,10 +5,8 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Modern floating HUD banner tracking the 4-step sterile draping sequence.
-/// Matches the visual styling and architecture of StrokeGuideUI with 4 step nodes:
-/// 1. Under Buttocks -> 2. Abdomen -> 3. Left Thigh -> 4. Right Thigh.
-/// Shows progress bar (0% to 100%), active target instructions, and checkmarks (✓).
+/// Modern floating HUD banner tracking the sterile draping sequence:
+/// 1. Under Buttocks -> 2. Abdomen -> Left or Right Leg (either order).
 /// </summary>
 public class DrapingGuideUI : MonoBehaviour
 {
@@ -47,16 +45,16 @@ public class DrapingGuideUI : MonoBehaviour
     {
         "1. Under Buttocks",
         "2. Abdomen",
-        "3. Left Thigh",
-        "4. Right Thigh"
+        "Left Leg",
+        "Right Leg"
     };
 
     private static readonly string[] DrapeInstructions = new string[4]
     {
         "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Place underneath patient's buttocks.",
         "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Place across lower abdomen / suprapubic.",
-        "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Cover the patient's left thigh & leg.",
-        "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Cover the patient's right thigh & leg."
+        "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Cover the patient's left leg (or right leg first).",
+        "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Cover the patient's right leg (or left leg first)."
     };
 
     private MotherDrapingManager drapingManager;
@@ -166,7 +164,8 @@ public class DrapingGuideUI : MonoBehaviour
 
             if (directionInstructionText != null)
             {
-                directionInstructionText.text = "Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Place drape on any remaining blue zone.";
+                string nextTarget = drapingManager != null ? drapingManager.GetExpectedStepDescription() : "next required zone";
+                directionInstructionText.text = $"Technique: <color=#38BDF8><b>Unfold with BOTH hands</b></color> -> Next: <b>{nextTarget}</b>.";
             }
         }
         else if (MayoStandDrapeSocket.Instance != null && !MayoStandDrapeSocket.Instance.isDraped)
@@ -224,6 +223,7 @@ public class DrapingGuideUI : MonoBehaviour
             if (stepDotImages[i] == null) continue;
 
             bool isDraped = (drapingManager != null && i < drapingManager.drapeSlots.Count && drapingManager.drapeSlots[i].isDraped);
+            bool isAvailableNext = (!isDraped && drapingManager != null && drapingManager.IsSlotValidNext(i));
 
             if (isDraped)
             {
@@ -235,9 +235,23 @@ public class DrapingGuideUI : MonoBehaviour
                     stepDotTexts[i].color = Color.white;
                 }
             }
+            else if (isAvailableNext)
+            {
+                // Currently valid next zone(s) -> Cyan Blue (both leg dots light up after Abdomen)
+                stepDotImages[i].color = activeColor;
+                if (stepDotTexts != null && i < stepDotTexts.Length && stepDotTexts[i] != null)
+                {
+                    bool bothLegsOpen = (i == 2 || i == 3)
+                        && drapingManager.drapeSlots.Count > 3
+                        && !drapingManager.drapeSlots[2].isDraped
+                        && !drapingManager.drapeSlots[3].isDraped;
+                    stepDotTexts[i].text = bothLegsOpen ? "3/4" : $"{i + 1}";
+                    stepDotTexts[i].color = Color.white;
+                }
+            }
             else
             {
-                // Available / Undraped -> Clean Dark Slate
+                // Locked / Upcoming -> Clean Dark Slate
                 stepDotImages[i].color = upcomingColor;
                 if (stepDotTexts != null && i < stepDotTexts.Length && stepDotTexts[i] != null)
                 {
@@ -249,7 +263,7 @@ public class DrapingGuideUI : MonoBehaviour
             if (stepDotSubTexts != null && i < stepDotSubTexts.Length && stepDotSubTexts[i] != null && i < DrapeLabels.Length)
             {
                 stepDotSubTexts[i].text = DrapeLabels[i];
-                stepDotSubTexts[i].color = isDraped ? Color.white : new Color(0.6f, 0.7f, 0.8f, 0.5f);
+                stepDotSubTexts[i].color = (isDraped || isAvailableNext) ? Color.white : new Color(0.6f, 0.7f, 0.8f, 0.5f);
             }
         }
     }

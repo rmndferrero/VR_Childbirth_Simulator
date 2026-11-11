@@ -50,6 +50,7 @@ public class TablePrepManager : MonoBehaviour
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
 
         CacheSlots();
+        AbsorbTable2ReferenceDuplicatesIfPresent();
     }
 
     private void Start()
@@ -398,6 +399,118 @@ public class TablePrepManager : MonoBehaviour
         else if (PerinealCareManager.Instance != null)
         {
             PerinealCareManager.Instance.SetState(PerinealCareState.STATE_8_FINAL_SUMMARY);
+        }
+    }
+
+    /// <summary>
+    /// If the scene still contains active Table 2 duplicate reference tools (e.g. "Forceps (1)",
+    /// "Tongs (1)", "Scalpel (1)", "Curette  (1)") alongside primary Table 1 tools, extracts
+    /// their exact slot poses and hides/destroys the duplicates so only real tools remain grabbable.
+    /// </summary>
+    public void AbsorbTable2ReferenceDuplicatesIfPresent()
+    {
+        CacheSlots();
+        if (slots == null || slots.Count == 0) return;
+
+        Transform trayParent = table2Root;
+        if (trayParent == null)
+        {
+            Transform cur = transform.parent;
+            while (cur != null)
+            {
+                if (cur.name.IndexOf("Table 2", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    cur.name.IndexOf("Table2", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    trayParent = cur;
+                    break;
+                }
+                cur = cur.parent;
+            }
+        }
+        if (trayParent == null) return;
+
+        // Collect all ToolItems in scene to distinguish genuine primary tools from Table 2 duplicates
+        ToolItem[] allTools = FindObjectsByType<ToolItem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var duplicateRefs = new List<ToolItem>();
+        float meanSlotY = 0f;
+        int validSlotCount = 0;
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (slots[i] == null) continue;
+            Transform root = slots[i].snapTransform != null ? slots[i].snapTransform : slots[i].transform;
+            meanSlotY += root.position.y;
+            validSlotCount++;
+        }
+        if (validSlotCount > 0) meanSlotY /= validSlotCount;
+
+        foreach (var candidate in allTools)
+        {
+            if (candidate == null || !candidate.transform.IsChildOf(trayParent)) continue;
+            if (!candidate.gameObject.name.Contains("(")) continue;
+
+            string key = TablePrepSlot.CanonicalizeToolKey(candidate.toolID);
+            if (string.IsNullOrEmpty(key)) key = TablePrepSlot.CanonicalizeToolKey(candidate.gameObject.name);
+            if (string.IsNullOrEmpty(key)) continue;
+
+            // Only treat as a reference duplicate if an unparented/other-table primary tool with same key exists
+            bool hasPrimaryOutsideTable2 = false;
+            foreach (var other in allTools)
+            {
+                if (other == null || other == candidate || other.transform.IsChildOf(trayParent)) continue;
+                string otherKey = TablePrepSlot.CanonicalizeToolKey(other.toolID);
+                if (string.IsNullOrEmpty(otherKey)) otherKey = TablePrepSlot.CanonicalizeToolKey(other.gameObject.name);
+                if (otherKey == key)
+                {
+                    hasPrimaryOutsideTable2 = true;
+                    break;
+                }
+            }
+
+            if (hasPrimaryOutsideTable2)
+            {
+                duplicateRefs.Add(candidate);
+            }
+        }
+
+        foreach (var refTool in duplicateRefs)
+        {
+            string key = TablePrepSlot.CanonicalizeToolKey(refTool.toolID);
+            if (string.IsNullOrEmpty(key)) key = TablePrepSlot.CanonicalizeToolKey(refTool.gameObject.name);
+
+            if (key == "artery_forceps")
+            {
+                TablePrepSlot slot1 = slots.Find(s => s != null && (s.slotNumber == 1 || TablePrepSlot.CanonicalizeToolKey(s.assignedToolID) == "artery_forceps"));
+                if (slot1 != null)
+                {
+                    Transform slotRoot = slot1.snapTransform != null ? slot1.snapTransform : slot1.transform;
+                    slot1.snapPositionOffset = slotRoot.InverseTransformDirection(refTool.transform.position - slotRoot.position);
+                    slot1.snapEulerAngles = (Quaternion.Inverse(slotRoot.rotation) * refTool.transform.rotation).eulerAngles;
+                    slot1.useAbsoluteSnapRotation = false;
+                }
+            }
+            else if (key == "scalpel" || key == "thumb_forceps" || key == "curette")
+            {
+                float yOffset = refTool.transform.position.y - meanSlotY;
+                string idToStore = !string.IsNullOrEmpty(refTool.toolID) ? refTool.toolID : refTool.gameObject.name;
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    TablePrepSlot slot = slots[i];
+                    if (slot == null || slot.HasPerToolReference(idToStore)) continue;
+                    Transform slotRoot = slot.snapTransform != null ? slot.snapTransform : slot.transform;
+                    Vector3 localEuler = (Quaternion.Inverse(slotRoot.rotation) * refTool.transform.rotation).eulerAngles;
+                    slot.SetPerToolReference(idToStore, new Vector3(0f, yOffset, 0f), localEuler, true);
+                }
+            }
+
+            refTool.gameObject.SetActive(false);
+            if (Application.isPlaying)
+            {
+                Destroy(refTool.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(refTool.gameObject);
+            }
         }
     }
 
