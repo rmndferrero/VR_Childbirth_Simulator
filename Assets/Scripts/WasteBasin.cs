@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -8,6 +9,7 @@ using UnityEngine;
 /// </summary>
 public class WasteBasin : MonoBehaviour
 {
+    public static event Action<WasteBasin, CottonState> OnCottonDisposed;
     [Header("Modular Visuals")]
     [Tooltip("Optional 3D Trashbin / Basin model reference (if null, acts as clean invisible trigger zone).")]
     public GameObject visualMeshSlot;
@@ -89,8 +91,16 @@ public class WasteBasin : MonoBehaviour
 
             Debug.Log("[WasteBasin] Cotton ball properly disposed inside trash bin (0 penalty, forceps untouched).");
             EvaluationLogger.Instance.LogCorrect("Cotton disposed in waste basin", MatrixCriterion.Sterility);
+            OnCottonDisposed?.Invoke(this, cotton);
 
-            Destroy(cotton.gameObject, 0.20f);
+            if (Application.isPlaying)
+            {
+                Destroy(cotton.gameObject, 0.20f);
+            }
+            else
+            {
+                DestroyImmediate(cotton.gameObject);
+            }
         }
     }
 }

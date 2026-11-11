@@ -118,13 +118,16 @@ public class VRDemoGameManager : MonoBehaviour
     private readonly Dictionary<string, int> toolDropCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private int totalStandardDeductions = 0;
     private int totalToolDropCount = 0;
+    private int wrongAntisepticMistakeCount = 0;
     public readonly List<string> mistakeLog = new List<string>();
 
     public int AffectedCottonBallCount => affectedCottonIds.Count;
     public int CottonBallDeduction => GetCottonBallTierPenalty(affectedCottonIds.Count);
     public int TotalToolDropCount => totalToolDropCount;
     public int ToolDropDeduction => GetToolDropTierPenalty(totalToolDropCount);
-    public int TotalDeductions => totalStandardDeductions + CottonBallDeduction + ToolDropDeduction;
+    public int WrongAntisepticMistakeCount => wrongAntisepticMistakeCount;
+    public int WrongAntisepticDeduction => GetWrongAntisepticTierPenalty(wrongAntisepticMistakeCount);
+    public int TotalDeductions => totalStandardDeductions + CottonBallDeduction + ToolDropDeduction + WrongAntisepticDeduction;
     public IReadOnlyDictionary<string, int> ToolDropCounts => toolDropCounts;
 
     public event Action<SimulationPhase> OnSimulationPhaseChanged;
@@ -158,6 +161,7 @@ public class VRDemoGameManager : MonoBehaviour
         toolDropCounts.Clear();
         totalStandardDeductions = 0;
         totalToolDropCount = 0;
+        wrongAntisepticMistakeCount = 0;
         mistakeLog.Clear();
         RecalculateCurrentScore();
         InitializeNewRecord();
@@ -188,6 +192,16 @@ public class VRDemoGameManager : MonoBehaviour
         if (droppedCount == 1) return 5;
         if (droppedCount <= 3) return 10;
         return 15;
+    }
+
+    /// <summary>
+    /// Tiered Wrong-Antiseptic Penalty: 0 -> 0, 1-3 mistakes -> -5 pts, 4+ mistakes -> -10 pts.
+    /// </summary>
+    public static int GetWrongAntisepticTierPenalty(int attemptCount)
+    {
+        if (attemptCount <= 0) return 0;
+        if (attemptCount <= 3) return 5;
+        return 10;
     }
 
     public static string NormalizeToolDisplayName(string rawItemId)
@@ -350,7 +364,7 @@ public class VRDemoGameManager : MonoBehaviour
     /// <summary>
     /// Records a rubric-defined clinical violation with centralized penalty calculation.
     /// </summary>
-    public void RecordViolation(ClinicalViolationType violationType, string customDetails = "")
+    public void RecordViolation(ClinicalViolationType violationType, string customDetails = "", bool showHudWarning = true)
     {
         int penalty = scoringRubric != null ? scoringRubric.GetPenaltyForViolation(violationType) : 5;
         string violationName = violationType.ToString().Replace('_', ' ');
@@ -365,9 +379,54 @@ public class VRDemoGameManager : MonoBehaviour
 
             totalStandardDeductions += Mathf.Max(0, penalty);
             RecalculateCurrentScore();
-            ShowWarning($"Violation: {readable} (-{penalty} pts)");
+            if (showHudWarning)
+            {
+                ShowWarning($"Violation: {readable} (-{penalty} pts)");
+            }
             Debug.Log($"[Scoring Engine] Violation '{violationType}' recorded. Deducted {penalty} pts. Remaining Score: {currentScore}");
         }
+    }
+
+    /// <summary>
+    /// Records an incorrect antiseptic selection (7.5% vs 10%, or dipping before rinse).
+    /// Tiers: 0 -> 0, 1-3 -> -5 pts, 4+ -> -10 pts total.
+    /// </summary>
+    public void RecordWrongAntisepticMistake(
+        AntisepticType attemptedAntiseptic,
+        AntisepticType expectedAntiseptic,
+        string customWarning = "")
+    {
+        int prevTier = WrongAntisepticDeduction;
+        wrongAntisepticMistakeCount++;
+        int nextTier = WrongAntisepticDeduction;
+        int delta = Mathf.Max(0, nextTier - prevTier);
+
+        string attemptedLabel = CottonJarZone.FormatAntisepticName(attemptedAntiseptic);
+        string expectedLabel = expectedAntiseptic == AntisepticType.None
+            ? "Water Wash / Rinse"
+            : CottonJarZone.FormatAntisepticName(expectedAntiseptic);
+        string detail = $"Attempted {attemptedLabel} when {expectedLabel} required";
+
+        EvaluationLogger.Instance.LogViolation(
+            ClinicalViolationType.Wrong_Antiseptic_Solution,
+            "Wrong antiseptic solution used",
+            detail,
+            delta,
+            delta > 0);
+
+        if (delta > 0)
+        {
+            RecalculateCurrentScore();
+            mistakeLog.Add(
+                $"Step {(int)currentSimulationPhase}: Wrong Antiseptic ({detail}) " +
+                $"(Attempts: {wrongAntisepticMistakeCount}, Tier: -{nextTier} pts, -{delta} pts)");
+        }
+
+        string warning = !string.IsNullOrEmpty(customWarning)
+            ? customWarning
+            : $"Wrong Antiseptic: Use {expectedLabel} (Mistake #{wrongAntisepticMistakeCount}, -{nextTier} pts tier).";
+        ShowWarning(warning);
+        Debug.LogWarning($"[Scoring Engine] Wrong Antiseptic #{wrongAntisepticMistakeCount}: {detail}, tier=-{nextTier} (delta=-{delta}). Score={currentScore}");
     }
 
     public void RecordMistake(string wrongToolOrAction, int penalty = 5)

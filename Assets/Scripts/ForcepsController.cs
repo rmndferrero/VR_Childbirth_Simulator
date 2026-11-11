@@ -38,6 +38,8 @@ public class ForcepsController : MonoBehaviour
     [HideInInspector] public bool isInJarZone = false;
     [HideInInspector] public CottonJarZone activeJarZone = null;
     private bool isSpawning = false;
+    private float lastWrongJarAttemptTime = -99f;
+    private const float WrongJarCooldownSeconds = 1.5f;
 
     private bool isHeldByLeftHand = false;
     private bool isHeldByRightHand = false;
@@ -294,10 +296,10 @@ public class ForcepsController : MonoBehaviour
                 cottonSocket.socketActive = false;
             }
 
-            // Inside the jar zone: holding primary button extracts cotton
+            // Inside the jar zone: holding primary button validates phase and extracts cotton
             if (isInJarZone && holdPressed && !HasCotton && !isSpawning)
             {
-                SpawnCotton();
+                TryExtractCottonFromActiveJar();
             }
 
             // Hold-to-clamp parity with Handling Forceps: hold primary button to retain cotton; release to drop
@@ -371,6 +373,60 @@ public class ForcepsController : MonoBehaviour
             DropCotton();
             if (cottonSocket != null) cottonSocket.socketActive = false;
         }
+    }
+
+    /// <summary>
+    /// Validates the active antiseptic jar against the current clinical phase before extracting cotton.
+    /// Rejects mismatched jars with a red vignette/buzzer bleep and records the mistake once per cooldown window.
+    /// </summary>
+    public bool TryExtractCottonFromActiveJar(bool bypassCooldown = false)
+    {
+        if (role != ForcepsRole.Pickup || !isInJarZone || HasCotton || isSpawning)
+        {
+            return false;
+        }
+
+        if (activeJarZone != null && !activeJarZone.IsAllowedInCurrentPhase(out AntisepticType expectedAntiseptic, out string denialMessage))
+        {
+            if (bypassCooldown || (Time.time - lastWrongJarAttemptTime) >= WrongJarCooldownSeconds)
+            {
+                lastWrongJarAttemptTime = Time.time;
+
+                if (VRDemoGameManager.Instance != null)
+                {
+                    VRDemoGameManager.Instance.RecordWrongAntisepticMistake(
+                        activeJarZone.antisepticType,
+                        expectedAntiseptic,
+                        denialMessage);
+                }
+                else
+                {
+                    EvaluationLogger.Instance.LogMatrixOnlyViolation(
+                        ClinicalViolationType.Wrong_Antiseptic_Solution,
+                        "Wrong antiseptic jar attempted",
+                        $"{CottonJarZone.FormatAntisepticName(activeJarZone.antisepticType)} blocked");
+                }
+
+                if (VRHeadsetVisualFeedback.Instance != null)
+                {
+                    VRHeadsetVisualFeedback.Instance.TriggerMistakeFlash(1.15f);
+                    VRHeadsetVisualFeedback.Instance.ShowInFaceHUD(
+                        "WRONG ANTISEPTIC",
+                        denialMessage.Replace('\n', ' '),
+                        new Color(0.94f, 0.27f, 0.27f, 1f),
+                        2.3f);
+                }
+                else
+                {
+                    Debug.LogWarning($"[Forceps] Blocked extraction from {activeJarZone.antisepticType}: {denialMessage}");
+                }
+            }
+
+            return false;
+        }
+
+        SpawnCotton();
+        return true;
     }
 
     private void SpawnCotton()

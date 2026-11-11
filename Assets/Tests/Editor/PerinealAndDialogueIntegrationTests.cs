@@ -41,6 +41,8 @@ public class PerinealAndDialogueIntegrationTests
         typeof(TablePrepManager).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
         typeof(SummaryScreenController).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
         typeof(VRHeadsetVisualFeedback).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
+        typeof(PerinealCareManager).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
+        typeof(TutorialManager).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
         typeof(VRDemoGameManager).GetProperty("LastCompletedRecord", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
         typeof(VRDemoGameManager).GetProperty("LastDebrief", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
         typeof(VRDemoGameManager).GetProperty("LastRubric", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { null });
@@ -765,5 +767,239 @@ public class PerinealAndDialogueIntegrationTests
         Assert.IsNotNull(overlayRenderer, "VR_RedVignette_Overlay must use a MeshRenderer stereo quad for OpenXR URP.");
         Assert.IsNotNull(overlayRenderer.sharedMaterial);
         Assert.AreNotEqual(0, cam.cullingMask & (1 << overlayTf.gameObject.layer));
+    }
+
+    [Test]
+    public void StrokeTracking_MidSwipeAndPostCompletionNeighborGrazes_DoNotFalseFlag_WhileFreshOutOfOrderStillRejects()
+    {
+        var (manager, tracks) = BuildStrokeRig();
+        manager.ResetForPhase(AntisepticType.Iodine_7_5_Scrub);
+
+        int mistakeTriggeredCount = 0;
+        manager.OnMistakeZoneTriggered += _ => mistakeTriggeredCount++;
+
+        // Touch invalid zone 4 cleanly without an active swipe -> still triggers OutOfOrderStroke red mistake
+        var coldCotton = CreateCotton();
+        coldCotton.antisepticType = AntisepticType.Iodine_7_5_Scrub;
+        manager.ProcessCottonTouch(coldCotton, 4, tracks[4].GetStartWorldPosition());
+        Assert.AreEqual(1, mistakeTriggeredCount, "Direct out-of-order touch without an active swipe must still trigger a red mistake.");
+
+        // Start a valid swipe on zone 0
+        var activeCotton = CreateCotton();
+        activeCotton.antisepticType = AntisepticType.Iodine_7_5_Scrub;
+        Vector3 s0 = tracks[0].GetStartWorldPosition();
+        Vector3 e0 = tracks[0].GetEndWorldPosition();
+        manager.ProcessCottonTouch(activeCotton, 0, Vector3.Lerp(s0, e0, 0.12f));
+        manager.ProcessCottonTouch(activeCotton, 0, Vector3.Lerp(s0, e0, 0.45f));
+        float progressBeforeBump = manager.GetCurrentStrokeProgress();
+        Assert.Greater(progressBeforeBump, 0.10f);
+
+        // Accidentally bump neighbor starter (zone 2 or 4) mid-swipe -> ignored without red highlight or progress reset
+        manager.ProcessCottonTouch(activeCotton, 4, tracks[4].GetStartWorldPosition());
+        Assert.AreEqual(1, mistakeTriggeredCount, "Mid-swipe neighbor bump must NOT trigger a red error.");
+        Assert.AreEqual(progressBeforeBump, manager.GetCurrentStrokeProgress(), 0.0001f, "Mid-swipe neighbor bump must NOT reset active stroke progress.");
+
+        // Also test sticky retention when drifting slightly lateral (within +0.03f widening) during active swipe
+        Vector3 slightlyWidePos = Vector3.Lerp(s0, e0, 0.70f) + new Vector3(0.06f, 0f, 0f);
+        Assert.AreEqual(0, manager.GetZoneIndexForPoint(slightlyWidePos), "Active swipe sticky corridor must hold zone 0 on small lateral wobble.");
+
+        // Complete zone 0
+        for (int f = 0; f < 30 && !manager.IsStrokeCompleted(0); f++)
+        {
+            manager.ProcessCottonTouch(activeCotton, 0, Vector3.Lerp(s0, e0, 0.96f));
+        }
+        Assert.IsTrue(manager.IsStrokeCompleted(0));
+        Assert.IsTrue(activeCotton.isUsed);
+
+        // Immediate post-completion follow-through graze on adjacent zone 2 (< 0.70s) must NOT trigger ReusedCottonBall
+        int preFollowUpMistakes = mistakeTriggeredCount;
+        string lastValidationMsg = string.Empty;
+        manager.OnStrokeValidated += (msg, ok) => { if (!ok) lastValidationMsg = msg; };
+        manager.ProcessCottonTouch(activeCotton, 2, tracks[2].GetStartWorldPosition());
+        Assert.AreEqual(preFollowUpMistakes, mistakeTriggeredCount);
+        Assert.AreEqual(string.Empty, lastValidationMsg, "Immediate follow-through graze with just-spent cotton must not emit reuse error.");
+    }
+
+    [Test]
+    public void PhraseDecisionMatrix_ShowsOnlyColorAfterSpeaking_WithoutPercentOrTextFeedback()
+    {
+        var (_, _, _, matrix, _) = BuildDialogueRig();
+
+        var gmGo = Track(new GameObject("TestDialogueGameManager", typeof(VRDemoGameManager)));
+        var gm = gmGo.GetComponent<VRDemoGameManager>();
+        typeof(VRDemoGameManager).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)
+            ?.GetSetMethod(true)?.Invoke(null, new object[] { gm });
+        gm.InitializeSimulation();
+
+        var outlineGo = Track(new GameObject("StatementOutline", typeof(RectTransform), typeof(Image), typeof(Outline)));
+        var bannerGo = Track(new GameObject("FeedbackBanner", typeof(RectTransform), typeof(TextMeshProUGUI)));
+        matrix.liveStatementCardBg = outlineGo.GetComponent<Image>();
+        matrix.liveStatementCardOutline = outlineGo.GetComponent<Outline>();
+        matrix.feedbackBannerText = bannerGo.GetComponent<TextMeshProUGUI>();
+
+        MethodInfo evalRoutine = typeof(PhraseDecisionMatrix).GetMethod("ProcessEvaluationOutcome", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(evalRoutine);
+
+        (float score, Color expectedOutline)[] cases =
+        {
+            (92f, matrix.greenColor),
+            (65f, matrix.orangeColor),
+            (25f, matrix.redColor)
+        };
+
+        foreach (var testCase in cases)
+        {
+            var e = (System.Collections.IEnumerator)evalRoutine.Invoke(matrix, new object[] { testCase.score, 80f, 50f });
+            Assert.IsTrue(e.MoveNext(), "Stage 1 ('Speaking to mother...') must yield once.");
+            Assert.IsTrue(e.MoveNext(), "Stage 2 (color reveal) must advance after waiting.");
+
+            Assert.AreEqual(testCase.expectedOutline, matrix.liveStatementCardOutline.effectColor);
+            Assert.AreEqual(string.Empty, matrix.feedbackBannerText.text, "Dialogue outcome must not display percentages or feedback text after speaking.");
+            Assert.IsFalse(matrix.feedbackBannerText.text.Contains("%"));
+        }
+    }
+
+    [Test]
+    public void AntisepticJars_Enforce75ThenRinseThen10Flow_AndApplyTieredPenalty_1to3Minus5_4PlusMinus10()
+    {
+        var gmGo = Track(new GameObject("TestJarGameManager", typeof(VRDemoGameManager)));
+        var gm = gmGo.GetComponent<VRDemoGameManager>();
+        typeof(VRDemoGameManager).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)
+            ?.GetSetMethod(true)?.Invoke(null, new object[] { gm });
+        gm.InitializeSimulation();
+
+        var careGo = Track(new GameObject("TestCareManager", typeof(PerinealCareManager)));
+        var care = careGo.GetComponent<PerinealCareManager>();
+        typeof(PerinealCareManager).GetProperty("Instance", BindingFlags.Static | BindingFlags.Public)
+            ?.GetSetMethod(true)?.Invoke(null, new object[] { care });
+        gm.perinealCareManager = care;
+
+        var jar75Go = Track(new GameObject("Jar75", typeof(BoxCollider), typeof(CottonJarZone)));
+        var jar75 = jar75Go.GetComponent<CottonJarZone>();
+        jar75.antisepticType = AntisepticType.Iodine_7_5_Scrub;
+
+        var jar10Go = Track(new GameObject("Jar10", typeof(BoxCollider), typeof(CottonJarZone)));
+        var jar10 = jar10Go.GetComponent<CottonJarZone>();
+        jar10.antisepticType = AntisepticType.Iodine_10_Paint;
+
+        var managerObj = new GameObject("TestXRInteractionManager", typeof(XRInteractionManager));
+        Track(managerObj);
+        var xrManager = managerObj.GetComponent<XRInteractionManager>();
+
+        var cottonPrefab = Track(new GameObject("TestCottonPrefab", typeof(BoxCollider), typeof(Rigidbody), typeof(XRGrabInteractable), typeof(CottonState)));
+        cottonPrefab.GetComponent<Rigidbody>().useGravity = false;
+
+        var forcepsGo = Track(new GameObject("TestPickupForceps", typeof(ForcepsController)));
+        var socketGo = Track(new GameObject("CottonSocket", typeof(XRSocketInteractor)));
+        socketGo.transform.SetParent(forcepsGo.transform, false);
+        var socket = socketGo.GetComponent<XRSocketInteractor>();
+        socket.interactionManager = xrManager;
+
+        var forceps = forcepsGo.GetComponent<ForcepsController>();
+        forceps.role = ForcepsRole.Pickup;
+        forceps.cottonSocket = socket;
+        forceps.cottonPrefab = cottonPrefab;
+
+        // Step 3 (7.5% Scrub): 10% jar is blocked; 7.5% jar succeeds
+        care.currentState = PerinealCareState.STATE_3_IODINE_7_5_SCRUB;
+        gm.SetPhase(SimulationPhase.STEP_3_IODINE_7_5_SCRUB);
+        forceps.isInJarZone = true;
+        forceps.activeJarZone = jar10;
+
+        Assert.IsFalse(forceps.TryExtractCottonFromActiveJar(bypassCooldown: true), "10% jar must be blocked in Step 3.");
+        Assert.IsFalse(forceps.HasCotton);
+        Assert.AreEqual(95, gm.currentScore, "1st wrong-antiseptic mistake deducts -5 pts.");
+
+        // 2nd and 3rd mistakes remain in the -5 tier (1-3 = -5)
+        Assert.IsFalse(forceps.TryExtractCottonFromActiveJar(bypassCooldown: true));
+        Assert.IsFalse(forceps.TryExtractCottonFromActiveJar(bypassCooldown: true));
+        Assert.AreEqual(3, gm.WrongAntisepticMistakeCount);
+        Assert.AreEqual(95, gm.currentScore, "Mistakes 1-3 share -5 tier total.");
+
+        // Step 4 (Rinse): both jars blocked; 4th mistake escalates deduction to -10 total (4+ = -10)
+        care.currentState = PerinealCareState.STATE_4_ANTISEPTIC_RINSE;
+        gm.SetPhase(SimulationPhase.STEP_4_ANTISEPTIC_RINSE);
+        forceps.activeJarZone = jar75;
+        Assert.IsFalse(forceps.TryExtractCottonFromActiveJar(bypassCooldown: true), "7.5% jar must be blocked during Step 4 Rinse.");
+        Assert.AreEqual(4, gm.WrongAntisepticMistakeCount);
+        Assert.AreEqual(90, gm.currentScore, "4th mistake escalates wrong-antiseptic tier to -10 pts.");
+
+        // Step 5 (10% Paint after rinse): 7.5% jar blocked; 10% jar succeeds
+        care.currentState = PerinealCareState.STATE_5_IODINE_10_PAINT;
+        gm.SetPhase(SimulationPhase.STEP_5_IODINE_10_PAINT);
+        forceps.activeJarZone = jar75;
+        Assert.IsFalse(forceps.TryExtractCottonFromActiveJar(bypassCooldown: true), "7.5% jar must be blocked in Step 5 after rinse.");
+
+        forceps.activeJarZone = jar10;
+        Assert.IsTrue(forceps.TryExtractCottonFromActiveJar(bypassCooldown: true), "10% jar must work cleanly in Step 5.");
+        Assert.IsTrue(forceps.HasCotton);
+        var extractedCotton = socket.GetOldestInteractableSelected().transform.GetComponent<CottonState>();
+        Assert.IsNotNull(extractedCotton);
+        Track(extractedCotton.gameObject);
+        Assert.AreEqual(AntisepticType.Iodine_10_Paint, extractedCotton.antisepticType);
+
+        // Also verify StrokeTrackingManager rejects leftover 7.5% cotton on perineum during 10% paint phase
+        var (strokeMgr, tracks) = BuildStrokeRig();
+        strokeMgr.ResetForPhase(AntisepticType.Iodine_10_Paint);
+        var leftover75Cotton = CreateCotton();
+        leftover75Cotton.antisepticType = AntisepticType.Iodine_7_5_Scrub;
+        strokeMgr.ProcessCottonTouch(leftover75Cotton, 0, tracks[0].GetStartWorldPosition());
+        Assert.AreEqual(0f, strokeMgr.GetCurrentStrokeProgress(), 0.0001f, "Leftover 7.5% cotton must never advance a 10% paint stroke.");
+        Assert.AreEqual(AntisepticType.Iodine_7_5_Scrub, leftover75Cotton.antisepticType);
+    }
+
+    [Test]
+    public void TutorialManager_RequiresActualTrashCanDisposal_BeforeCompletingStep3()
+    {
+        var basinGo = Track(new GameObject("TestTrashCanDisposal", typeof(BoxCollider), typeof(WasteBasin)));
+        var basin = basinGo.GetComponent<WasteBasin>();
+        basin.EnsureTriggerCollider();
+
+        var pickupGo = Track(new GameObject("TestPickupForceps", typeof(ForcepsController)));
+        var handlingGo = Track(new GameObject("TestHandlingForceps", typeof(ForcepsController)));
+        var managerObj = Track(new GameObject("TestTutXRManager", typeof(XRInteractionManager)));
+
+        // Minimal sockets so HasCotton works reliably (no selection => HasCotton == false)
+        var handlingSocketGo = Track(new GameObject("HandlingSocket", typeof(XRSocketInteractor)));
+        handlingSocketGo.transform.SetParent(handlingGo.transform, false);
+        handlingSocketGo.GetComponent<XRSocketInteractor>().interactionManager = managerObj.GetComponent<XRInteractionManager>();
+        var handlingForceps = handlingGo.GetComponent<ForcepsController>();
+        handlingForceps.role = ForcepsRole.Handling;
+        handlingForceps.cottonSocket = handlingSocketGo.GetComponent<XRSocketInteractor>();
+
+        var pickupForceps = pickupGo.GetComponent<ForcepsController>();
+        pickupForceps.role = ForcepsRole.Pickup;
+
+        var completionCard = Track(new GameObject("TestCompletionCard"));
+        completionCard.SetActive(false);
+
+        var tutGo = Track(new GameObject("TestTutorialManager", typeof(TutorialManager)));
+        var tut = tutGo.GetComponent<TutorialManager>();
+        tut.wasteBasin = basin;
+        tut.wasteBasinTransform = basin.transform;
+        tut.pickupForceps = pickupForceps;
+        tut.handlingForceps = handlingForceps;
+        tut.completionCard = completionCard;
+
+        typeof(TutorialManager).GetMethod("OnEnable", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(tut, null);
+        tut.currentState = TutorialState.Step3_ForcepsTransfer;
+        tut.ShowStep3SubPhase4_DisposeInTrashBin();
+
+        // Simulate missing the trash can past the 1.2s fall grace window (no WasteBasin disposal event)
+        typeof(TutorialManager).GetField("step3MissedTrashElapsed", BindingFlags.Instance | BindingFlags.NonPublic)?.SetValue(tut, 1.5f);
+        typeof(TutorialManager).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(tut, null);
+
+        Assert.AreNotEqual(TutorialState.Step4_Completed, tut.currentState, "Dropping outside the trash can must never complete the tutorial.");
+        Assert.IsFalse(completionCard.activeSelf);
+
+        // Now place in subPhase 4 and trigger genuine WasteBasin cotton disposal -> must complete tutorial
+        tut.ShowStep3SubPhase4_DisposeInTrashBin();
+        var disposedCotton = CreateCotton();
+        disposedCotton.currentHolder = null;
+        typeof(WasteBasin).GetMethod("HandleCottonInZone", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.Invoke(basin, new object[] { disposedCotton.gameObject.AddComponent<BoxCollider>() });
+        typeof(TutorialManager).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(tut, null);
+
+        Assert.AreEqual(TutorialState.Step4_Completed, tut.currentState, "Disposing cotton inside WasteBasin in subPhase 4 must complete the tutorial.");
     }
 }

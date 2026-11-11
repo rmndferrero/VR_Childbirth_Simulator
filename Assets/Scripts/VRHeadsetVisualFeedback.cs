@@ -136,6 +136,12 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
     private void HandleEvaluationEventLogged(EvaluationEvent e)
     {
         if (e == null || e.isCorrect) return;
+        // Step 1 dialogue outcome is shown strictly via statement card color (Green/Orange/Red), not HMD flash
+        if (e.violationType == nameof(ClinicalViolationType.Suboptimal_Dialogue)
+            || e.violationType == nameof(ClinicalViolationType.Inadequate_Dialogue))
+        {
+            return;
+        }
         float duration = e.severity == MistakeSeverity.Severe ? 1.45f : 1.15f;
         FlashRedVignette(duration);
     }

@@ -66,6 +66,9 @@ public class StrokeTrackingManager : MonoBehaviour
     private float lastActiveTouchTime = -99f;
     private int lastCompletedZoneIndex = -1;
     private float lastCompletedTime = -99f;
+    private CottonState activeSwipeCotton = null;
+    private CottonState lastCompletedCotton = null;
+    private float lastWrongAntisepticWarningTime = -99f;
 
     public event System.Action<int, StrokeZoneDefinition> OnStrokeAdvanced;
     public event System.Action<string, bool> OnStrokeValidated;
@@ -149,6 +152,8 @@ public class StrokeTrackingManager : MonoBehaviour
         lastPickupForcepsStrokeTime = -99f;
         lastCompletedZoneIndex = -1;
         lastCompletedTime = -99f;
+        lastCompletedCotton = null;
+        lastWrongAntisepticWarningTime = -99f;
 
         CacheSliderTracks();
 
@@ -317,14 +322,14 @@ public class StrokeTrackingManager : MonoBehaviour
         if (sliderTracks == null || sliderTracks.Length == 0) CacheSliderTracks();
         if (sliderTracks == null || sliderTracks.Length == 0) return -1;
 
-        // Stick to an in-progress active zone while the cotton stays within its corridor so overlapping zones don't flicker mid-drag
+        // Stick to an in-progress active zone while the cotton stays within its widened corridor so overlapping/adjacent starters don't steal focus mid-swipe
         if (activeAttemptZoneIndex >= 0 && hasActiveEntry && !completedIndices.Contains(activeAttemptZoneIndex)
             && activeAttemptZoneIndex < sliderTracks.Length && sliderTracks[activeAttemptZoneIndex] != null)
         {
             var activeTrack = sliderTracks[activeAttemptZoneIndex];
-            float activeRadius = (activeTrack.isTapOnly ? tapTouchRadius : sliderTouchRadius) + 0.01f;
+            float activeRadius = (activeTrack.isTapOnly ? tapTouchRadius : sliderTouchRadius) + 0.03f;
             float activeDistSq = GetDistanceSqToTrack(worldPoint, activeTrack, out float activeT);
-            if (activeDistSq <= activeRadius * activeRadius && (activeTrack.isTapOnly || (activeT >= -0.20f && activeT <= 1.20f)))
+            if (activeDistSq <= activeRadius * activeRadius && (activeTrack.isTapOnly || (activeT >= -0.35f && activeT <= 1.35f)))
             {
                 return activeAttemptZoneIndex;
             }
@@ -418,11 +423,41 @@ public class StrokeTrackingManager : MonoBehaviour
         if (touchedZoneIndex < 0 || touchedZoneIndex >= 9) return;
         if (IsMistakeLockoutActive) return;
 
-        // Auto-soak fail-safe if cotton is not soaked
+        // Preserve explicit jar antiseptic; only fallback-assign when untagged (None)
         if (!cotton.isSoaked)
         {
             cotton.isSoaked = true;
+        }
+        if (cotton.antisepticType == AntisepticType.None)
+        {
             cotton.antisepticType = currentPhaseAntiseptic;
+        }
+
+        // Guard against wrong antiseptic cotton touching the perineum (e.g., 7.5% carried past rinse into 10% paint)
+        if (!cotton.isUsed && cotton.antisepticType != currentPhaseAntiseptic)
+        {
+            HandleWrongAntisepticTouch(touchedZoneIndex, cotton.antisepticType);
+            return;
+        }
+
+        // Cross-zone follow-through grace right after completing a stroke so lifting off past a neighbor doesn't false-flag ReusedCottonBall
+        if (cotton.isUsed && cotton == lastCompletedCotton && (Time.time - lastCompletedTime) < 0.70f)
+        {
+            return;
+        }
+
+        // Mid-swipe neighbor-starter graze shield: once a valid stroke has started with this cotton,
+        // brushing an adjacent zone mid-swipe must not cancel progress or flash a false red error.
+        if (hasActiveEntry
+            && activeAttemptZoneIndex >= 0
+            && !completedIndices.Contains(activeAttemptZoneIndex)
+            && currentStrokeProgress > 0f
+            && !cotton.isUsed
+            && cotton == activeSwipeCotton
+            && (Time.time - lastActiveTouchTime) <= strokeAbandonmentTimeout
+            && touchedZoneIndex != activeAttemptZoneIndex)
+        {
+            return;
         }
 
         GetZoneEndpoints(touchedZoneIndex, out Vector3 startPoint, out Vector3 endPoint);
@@ -503,6 +538,7 @@ public class StrokeTrackingManager : MonoBehaviour
 
             case PerinealRuleDecision.AdvanceProgress:
                 ApplyProgressUpdate(touchedZoneIndex, startPoint, endPoint, result);
+                activeSwipeCotton = cotton;
                 lastActiveTouchTime = Time.time;
                 lastTouchPos = touchPos;
                 return;
@@ -582,6 +618,54 @@ public class StrokeTrackingManager : MonoBehaviour
         HandleMistakeTouch(touchPos, touchedZoneIndex, result.userFeedback, mappedViolation, result.ruleId);
     }
 
+    private void HandleWrongAntisepticTouch(int touchedZoneIndex, AntisepticType attemptedAntiseptic)
+    {
+        float cooldown = mistakeLockoutDuration > 0f ? mistakeLockoutDuration : 0f;
+        if (cooldown > 0f && (Time.time - lastWrongAntisepticWarningTime) < cooldown)
+        {
+            return;
+        }
+
+        lastWrongAntisepticWarningTime = Time.time;
+        lastMistakeTriggerTime = Time.time;
+
+        int resetZone = activeAttemptZoneIndex >= 0 ? activeAttemptZoneIndex : touchedZoneIndex;
+        ResetActiveDragStateAndNotify(resetZone);
+
+        if (touchedZoneIndex >= 0)
+        {
+            OnMistakeZoneTriggered?.Invoke(touchedZoneIndex);
+        }
+
+        string expectedLabel = CottonJarZone.FormatAntisepticName(currentPhaseAntiseptic);
+        string attemptedLabel = CottonJarZone.FormatAntisepticName(attemptedAntiseptic);
+        string reason = $"Wrong antiseptic ({attemptedLabel})! Use {expectedLabel} for this step.";
+
+        if (VRDemoGameManager.Instance != null)
+        {
+            VRDemoGameManager.Instance.RecordWrongAntisepticMistake(attemptedAntiseptic, currentPhaseAntiseptic, reason);
+        }
+        else
+        {
+            EvaluationLogger.Instance.LogMatrixOnlyViolation(
+                ClinicalViolationType.Wrong_Antiseptic_Solution,
+                "Wrong antiseptic cotton applied to perineum",
+                reason);
+        }
+
+        if (VRHeadsetVisualFeedback.Instance != null)
+        {
+            VRHeadsetVisualFeedback.Instance.TriggerMistakeFlash(1.15f);
+            VRHeadsetVisualFeedback.Instance.ShowInFaceHUD(
+                "WRONG ANTISEPTIC",
+                reason,
+                new Color(0.94f, 0.27f, 0.27f, 1f),
+                2.3f);
+        }
+
+        OnStrokeValidated?.Invoke(reason, false);
+    }
+
     private static ClinicalViolationType MapViolationType(PerinealRuleViolation violation)
     {
         switch (violation)
@@ -645,6 +729,7 @@ public class StrokeTrackingManager : MonoBehaviour
         completedIndices.Add(finishedIndex);
         lastCompletedZoneIndex = finishedIndex;
         lastCompletedTime = Time.time;
+        lastCompletedCotton = cotton;
 
         string zoneName = GetDisplayZoneName(finishedIndex);
         Debug.Log($"[StrokeTrackingManager] Stroke Completed ({completedIndices.Count}/9): Zone {finishedIndex + 1} - {zoneName}");
@@ -723,6 +808,7 @@ public class StrokeTrackingManager : MonoBehaviour
         passedMidpoint = false;
         lastTouchPos = Vector3.zero;
         lastActiveTouchTime = -99f;
+        activeSwipeCotton = null;
     }
 
     private void ResetActiveDragStateAndNotify(int zoneToReset)

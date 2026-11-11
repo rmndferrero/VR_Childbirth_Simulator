@@ -133,11 +133,26 @@ public class TutorialManager : MonoBehaviour
     private float step3HandlingHoldTimer = 0f;
     private bool step3HandlingAlreadyHeldAtStart = false;
     private bool isTransitioningStep = false;
+    private bool hasDisposedCottonInTrash = false;
+    private float step3MissedTrashElapsed = 0f;
+    private const float Step3MissedTrashFallGraceSeconds = 1.2f;
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
+
+        if (wasteBasin == null)
+        {
+            if (wasteBasinTransform != null)
+            {
+                wasteBasin = wasteBasinTransform.GetComponentInChildren<WasteBasin>(true);
+            }
+            if (wasteBasin == null)
+            {
+                wasteBasin = FindFirstObjectByType<WasteBasin>(FindObjectsInactive.Include);
+            }
+        }
 
         if (proceedToMainSceneButton != null)
         {
@@ -156,6 +171,25 @@ public class TutorialManager : MonoBehaviour
             sampleActionButton.onClick.RemoveAllListeners();
             sampleActionButton.onClick.AddListener(OnSampleButtonClicked);
         }
+    }
+
+    private void OnEnable()
+    {
+        WasteBasin.OnCottonDisposed -= HandleWasteBasinCottonDisposed;
+        WasteBasin.OnCottonDisposed += HandleWasteBasinCottonDisposed;
+    }
+
+    private void OnDisable()
+    {
+        WasteBasin.OnCottonDisposed -= HandleWasteBasinCottonDisposed;
+    }
+
+    private void HandleWasteBasinCottonDisposed(WasteBasin basin, CottonState cotton)
+    {
+        if (currentState != TutorialState.Step3_ForcepsTransfer || step3SubPhase != 4 || isTransitioningStep) return;
+        if (wasteBasin != null && basin != null && basin != wasteBasin) return;
+
+        hasDisposedCottonInTrash = true;
     }
 
     private void Start()
@@ -471,6 +505,8 @@ public class TutorialManager : MonoBehaviour
         currentState = TutorialState.Step3_ForcepsTransfer;
         step3SubPhase = 0;
         isTransitioningStep = false;
+        hasDisposedCottonInTrash = false;
+        step3MissedTrashElapsed = 0f;
 
         // Ensure demoTool doesn't intercept rays aimed at forceps on Table 3
         if (demoTool != null)
@@ -515,7 +551,14 @@ public class TutorialManager : MonoBehaviour
 
     public void ShowStep3SubPhase1_DipInIodineJar()
     {
+        ShowStep3SubPhase1_DipInIodineJar(missedTrash: false);
+    }
+
+    private void ShowStep3SubPhase1_DipInIodineJar(bool missedTrash)
+    {
         step3SubPhase = 1;
+        hasDisposedCottonInTrash = false;
+        step3MissedTrashElapsed = 0f;
         PlaySound(stepCompleteClip);
         HideAllStepGuideUIsExcept(step3BIodineJarGuideUI);
 
@@ -523,11 +566,14 @@ public class TutorialManager : MonoBehaviour
         {
             Transform target = antisepticJarTransform != null ? antisepticJarTransform : null;
             Transform ringUI = step3BIodineJarGuideUI != null ? step3BIodineJarGuideUI.transform : ringPosition_IodineJar;
+            string callout = missedTrash
+                ? "<color=#EF4444>MISSED TRASH BIN!</color>\n" + step3B_DipJarCallout
+                : step3B_DipJarCallout;
 
             holographicGuide.UpdateTargetAndCallout(
                 HolographicButtonType.ButtonA,
-                step3B_DipJarCallout,
-                step3B_DipJarCallout,
+                callout,
+                callout,
                 "BTN A",
                 target,
                 step3B_DipJarRingLabel,
@@ -602,6 +648,8 @@ public class TutorialManager : MonoBehaviour
     public void ShowStep3SubPhase4_DisposeInTrashBin()
     {
         step3SubPhase = 4;
+        hasDisposedCottonInTrash = false;
+        step3MissedTrashElapsed = 0f;
         PlaySound(stepCompleteClip);
         HideAllStepGuideUIsExcept(step3ETrashBasinGuideUI);
 
@@ -696,10 +744,42 @@ public class TutorialManager : MonoBehaviour
         }
         else if (step3SubPhase == 4)
         {
-            if (handlingForceps != null && !handlingForceps.HasCotton)
+            if (hasDisposedCottonInTrash)
             {
                 StartCoroutine(CompleteTutorialRoutine());
             }
+            else if (handlingForceps != null && !handlingForceps.HasCotton)
+            {
+                // Allow a brief fall grace window after releasing [A] above the trash rim before requiring re-dip
+                step3MissedTrashElapsed += Time.deltaTime;
+                if (step3MissedTrashElapsed >= Step3MissedTrashFallGraceSeconds)
+                {
+                    HandleStep3MissedTrashDisposal();
+                }
+            }
+            else
+            {
+                step3MissedTrashElapsed = 0f;
+            }
+        }
+    }
+
+    private void HandleStep3MissedTrashDisposal()
+    {
+        hasDisposedCottonInTrash = false;
+        step3MissedTrashElapsed = 0f;
+
+        if (!IsForcepsHeld(pickupForceps))
+        {
+            ShowStep3SubPhase0_GrabPickupForceps();
+        }
+        else if (pickupForceps != null && pickupForceps.HasCotton)
+        {
+            ShowStep3SubPhase2_GrabHandlingForceps();
+        }
+        else
+        {
+            ShowStep3SubPhase1_DipInIodineJar(missedTrash: true);
         }
     }
 

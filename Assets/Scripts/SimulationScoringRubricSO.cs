@@ -29,7 +29,10 @@ public enum ClinicalViolationType
     Forceps_Transfer_Error,
 
     // Step 2: Perineal water wash off-target area (e.g. pouring onto thighs/abdomen instead of perineum)
-    Wrong_Washing_Area
+    Wrong_Washing_Area,
+
+    // Steps 3-5: Incorrect iodine concentration or dipping before rinse completes
+    Wrong_Antiseptic_Solution
 }
 
 /// <summary>

@@ -494,18 +494,18 @@ public class PhraseDecisionMatrix : MonoBehaviour
         yield return new WaitForSeconds(1.0f);
 
         // ════════════════════════════════════════════════════════════════
-        // STAGE 2: THEN SHOWS COLOR & FEEDBACK
+        // STAGE 2: COLOR-ONLY OUTCOME ON CARD (Green / Orange / Red)
+        // Percentages and detailed debrief stay hidden until the Step 8 Summary.
         // ════════════════════════════════════════════════════════════════
+        if (feedbackBannerText != null)
+        {
+            feedbackBannerText.text = string.Empty;
+        }
+
         if (score >= greenThreshold)
         {
             if (liveStatementCardOutline != null) liveStatementCardOutline.effectColor = greenColor;
             if (liveStatementCardBg != null) liveStatementCardBg.color = new Color(0.04f, 0.20f, 0.13f, 0.95f);
-
-            if (feedbackBannerText != null)
-            {
-                feedbackBannerText.text = $"<color=#34D399><b>[OK] Clinical Standard Met ({Mathf.RoundToInt(score)}%)</b></color>\n" +
-                    (scenarioData != null ? scenarioData.optimalPatientResponse : "\"Thank you for explaining, nurse. I understand and am ready.\"");
-            }
 
             PlaySound(optimalSuccessClip);
             Debug.Log($"[Decision Matrix] Green Tier ({score}%): Dialogue accepted. Proceeding to Step 2.");
@@ -515,19 +515,14 @@ public class PhraseDecisionMatrix : MonoBehaviour
             if (liveStatementCardOutline != null) liveStatementCardOutline.effectColor = orangeColor;
             if (liveStatementCardBg != null) liveStatementCardBg.color = new Color(0.24f, 0.16f, 0.04f, 0.95f);
 
-            if (feedbackBannerText != null)
-            {
-                feedbackBannerText.text = $"<color=#F59E0B><b>[!] Suboptimal Communication ({Mathf.RoundToInt(score)}%, -5 pts)</b></color>\n" +
-                    (scenarioData != null ? scenarioData.suboptimalPatientResponse : "\"Okay nurse... please be gentle.\"");
-            }
-
             PlaySound(warningClip);
 
             if (VRDemoGameManager.Instance != null)
             {
                 VRDemoGameManager.Instance.RecordViolation(
                     ClinicalViolationType.Suboptimal_Dialogue,
-                    "Suboptimal communication: Lacked complete professional protocol or sensory explanation.");
+                    "Suboptimal communication: Lacked complete professional protocol or sensory explanation.",
+                    showHudWarning: false);
             }
         }
         else
@@ -535,22 +530,14 @@ public class PhraseDecisionMatrix : MonoBehaviour
             if (liveStatementCardOutline != null) liveStatementCardOutline.effectColor = redColor;
             if (liveStatementCardBg != null) liveStatementCardBg.color = new Color(0.25f, 0.08f, 0.08f, 0.95f);
 
-            if (feedbackBannerText != null)
-            {
-                string response = scenarioData != null && !string.IsNullOrEmpty(scenarioData.inadequatePatientResponse)
-                    ? scenarioData.inadequatePatientResponse
-                    : "\"Wait, who are you? What are you going to do?\"";
-                feedbackBannerText.text = $"<color=#EF4444><b>[!] Protocol Inadequate ({Mathf.RoundToInt(score)}%, -10 pts)</b></color>\n" +
-                    $"{response}\n<i>Proceeding to Step 2 — review recommended phrasing in the final assessment.</i>";
-            }
-
             PlaySound(warningClip);
 
             if (VRDemoGameManager.Instance != null)
             {
                 VRDemoGameManager.Instance.RecordViolation(
                     ClinicalViolationType.Inadequate_Dialogue,
-                    "Inadequate patient communication: Failed to obtain clear informed consent.");
+                    "Inadequate patient communication: Failed to obtain clear informed consent.",
+                    showHudWarning: false);
             }
         }
 

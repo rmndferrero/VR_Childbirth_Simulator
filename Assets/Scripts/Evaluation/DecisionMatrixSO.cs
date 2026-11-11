@@ -134,6 +134,7 @@ public class DecisionMatrixSO : ScriptableObject
             R(ClinicalViolationType.Contaminated_Drop_Outside_Basin, St, Sev, "Discard used cotton only into the waste basin."),
             R(ClinicalViolationType.Forceps_Transfer_Error, Te, Mod, "Take cotton from the jar with the Pickup forceps only, transfer it to the Handling forceps, and wipe with the Handling forceps."),
             R(ClinicalViolationType.Wrong_Washing_Area, Te, Mod, "Pour warm water only over the perineal area from front to back (not onto the thighs, legs, or abdomen)."),
+            R(ClinicalViolationType.Wrong_Antiseptic_Solution, Sq, Mod, "Use 7.5% Iodine Scrub first, rinse thoroughly with water, then apply 10% Iodine Paint."),
         };
     }
 }
