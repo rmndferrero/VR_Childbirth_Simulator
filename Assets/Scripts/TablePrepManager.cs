@@ -326,7 +326,28 @@ public class TablePrepManager : MonoBehaviour
         else
         {
             PlaySound(wrongSlotClip);
-            RecordMistake($"Incorrect Mayo Table Setup: {wrongSlots.Count} instruments misplaced on the tray.");
+            var wrongDescriptions = new List<string>();
+            int maxListed = Mathf.Min(3, wrongSlots.Count);
+            for (int i = 0; i < maxListed; i++)
+            {
+                var ws = wrongSlots[i];
+                if (ws == null) continue;
+                string expected = ws.assignedTool != null
+                    ? VRDemoGameManager.NormalizeToolDisplayName(ws.assignedTool.toolID)
+                    : (!string.IsNullOrEmpty(ws.assignedToolID) ? VRDemoGameManager.NormalizeToolDisplayName(ws.assignedToolID) : $"Slot {ws.slotNumber}");
+                string actual = ws.currentPlacedTool != null
+                    ? VRDemoGameManager.NormalizeToolDisplayName(ws.currentPlacedTool.toolID)
+                    : "Instrument";
+                wrongDescriptions.Add($"Slot {ws.slotNumber}: placed {actual} instead of {expected}");
+            }
+            if (wrongSlots.Count > maxListed)
+            {
+                wrongDescriptions.Add($"and {wrongSlots.Count - maxListed} more misplaced");
+            }
+            string detailReason = wrongDescriptions.Count > 0
+                ? string.Join("; ", wrongDescriptions)
+                : $"Incorrect Mayo Table Setup: {wrongSlots.Count} instruments misplaced on the tray.";
+            RecordMistake(detailReason);
 
             if (VRHeadsetVisualFeedback.Instance != null)
             {

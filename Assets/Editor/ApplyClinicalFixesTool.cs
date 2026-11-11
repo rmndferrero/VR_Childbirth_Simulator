@@ -470,6 +470,75 @@ public static class ApplyClinicalFixesTool
         return true;
     }
 
+    [MenuItem("Tools/Rebuild Beta Summary Screens Only")]
+    public static void RebuildBetaSummaryScreensOnly()
+    {
+        const string SummaryScenePath = "Assets/Scenes/SummaryScene.unity";
+        TMP_FontAsset font = LoadPreferredTMPFont();
+
+        if (File.Exists(MainScenePath))
+        {
+            Scene mainScene = EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
+            bool mainSummaryRebuilt = RebuildMainSceneSummaryAndWireManagers();
+            if (mainSummaryRebuilt)
+            {
+                EditorSceneManager.MarkSceneDirty(mainScene);
+                EditorSceneManager.SaveScene(mainScene);
+            }
+            Debug.Log($"[ApplyClinicalFixesTool] MainScene Beta Summary rebuilt: {mainSummaryRebuilt}");
+        }
+
+        if (File.Exists(SummaryScenePath))
+        {
+            Scene summaryScene = EditorSceneManager.OpenScene(SummaryScenePath, OpenSceneMode.Single);
+            Transform summaryCanvas = null;
+            foreach (Transform tf in UnityEngine.Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (tf != null && tf.gameObject.scene == summaryScene && tf.gameObject.name == "SummaryCanvas")
+                {
+                    summaryCanvas = tf;
+                    break;
+                }
+            }
+
+            if (summaryCanvas != null)
+            {
+                RectTransform canvasRt = summaryCanvas.GetComponent<RectTransform>();
+                if (canvasRt != null)
+                {
+                    canvasRt.sizeDelta = new Vector2(820f, 620f);
+                    canvasRt.localScale = Vector3.one * 0.0019f;
+                }
+
+                for (int i = summaryCanvas.childCount - 1; i >= 0; i--)
+                {
+                    Transform child = summaryCanvas.GetChild(i);
+                    if (child != null && child.name == "SummaryScreen")
+                    {
+                        UnityEngine.Object.DestroyImmediate(child.gameObject);
+                    }
+                }
+
+                GameObject newSummary = BuildSimulationUI.BuildSummaryScreen(summaryCanvas, font);
+                if (newSummary != null)
+                {
+                    newSummary.SetActive(true);
+                    EditorUtility.SetDirty(newSummary);
+                }
+
+                EditorSceneManager.MarkSceneDirty(summaryScene);
+                EditorSceneManager.SaveScene(summaryScene);
+                Debug.Log("[ApplyClinicalFixesTool] SummaryScene Beta Summary rebuilt and saved.");
+            }
+        }
+
+        if (File.Exists(MainScenePath))
+        {
+            EditorSceneManager.OpenScene(MainScenePath, OpenSceneMode.Single);
+        }
+        AssetDatabase.SaveAssets();
+    }
+
     private static PitcherPour FindActivePitcher()
     {
         PitcherPour fallback = null;

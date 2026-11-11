@@ -507,10 +507,11 @@ public class StrokeTrackingManager : MonoBehaviour
         if (result.hasForcepsTransferAdvisory && Time.time - lastPickupForcepsStrokeTime > 1.5f)
         {
             lastPickupForcepsStrokeTime = Time.time;
+            string advZoneName = GetDisplayZoneName(touchedZoneIndex);
             EvaluationLogger.Instance.LogMatrixOnlyViolation(
                 ClinicalViolationType.Forceps_Transfer_Error,
                 "Stroke attempted with Pickup forceps",
-                $"Zone {touchedZoneIndex + 1}");
+                $"{advZoneName} (Zone {touchedZoneIndex + 1})");
         }
 
         if (result.resetDragAttempt && activeAttemptZoneIndex >= 0 && activeAttemptZoneIndex != touchedZoneIndex)
@@ -714,12 +715,44 @@ public class StrokeTrackingManager : MonoBehaviour
 
         Debug.LogWarning($"[StrokeTrackingManager] [{ruleId}] {reason}");
 
+        string loggedReason = BuildDetailedStrokeViolationMessage(mistakeZoneIndex, violationType, reason);
         if (PerinealCareManager.Instance != null)
         {
-            PerinealCareManager.Instance.RecordClinicalViolation(violationType, reason, 5);
+            PerinealCareManager.Instance.RecordClinicalViolation(violationType, loggedReason, 5);
+        }
+        else if (VRDemoGameManager.Instance != null)
+        {
+            VRDemoGameManager.Instance.RecordViolation(violationType, loggedReason);
         }
 
         OnStrokeValidated?.Invoke(reason, false);
+    }
+
+    private string BuildDetailedStrokeViolationMessage(int mistakeZoneIndex, ClinicalViolationType violationType, string fallbackReason)
+    {
+        if (mistakeZoneIndex < 0 || mistakeZoneIndex >= 9)
+        {
+            return fallbackReason;
+        }
+
+        string phaseTag = currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint ? "10% Paint" : "7.5% Scrub";
+        string touchedZone = GetDisplayZoneName(mistakeZoneIndex);
+
+        if (violationType == ClinicalViolationType.Out_Of_Order_Stroke)
+        {
+            string expected = GetValidChoicesSummary();
+            bool isFirstStroke = completedIndices.Count == 0;
+            return isFirstStroke
+                ? $"[{phaseTag}] Stroked {touchedZone} first (expected {expected})"
+                : $"[{phaseTag}] Stroked {touchedZone} out of order (expected {expected})";
+        }
+
+        if (violationType == ClinicalViolationType.Reverse_Wipe_Direction)
+        {
+            return $"[{phaseTag}] {touchedZone}: wiped wrong direction (top to bottom required)";
+        }
+
+        return $"[{phaseTag}] {touchedZone}: {fallbackReason}";
     }
 
     private void CompleteCurrentStroke(CottonState cotton, int finishedIndex)

@@ -39,6 +39,28 @@ public class SummaryScreenController : MonoBehaviour
     public Button buttonNext;
     public Button buttonRestart;
     public Button buttonMainMenu;
+    public Button buttonExit;
+
+    [Header("Beta Summary Dashboard (Sleek Single-Screen Layout)")]
+    public GameObject betaDashboardRoot;
+    public Image betaToolsDroppedPillBg;
+    public TMP_Text betaToolsDroppedPillText;
+
+    [Header("Beta Section 1: Dialogue")]
+    public Image betaDialogueTierPillBg;
+    public TMP_Text betaDialogueTierPillText;
+    public TMP_Text betaDialogueSentenceText;
+    public TMP_Text betaDialogueFeedbackText;
+
+    [Header("Beta Section 2: Perineal Cleaning")]
+    public Image betaCottonPillBg;
+    public TMP_Text betaCottonPillText;
+    public TMP_Text betaPerinealBodyText;
+
+    [Header("Beta Section 3: Draping & Table Prep")]
+    public Image betaDrapingTablePillBg;
+    public TMP_Text betaDrapingTablePillText;
+    public TMP_Text betaDrapingTableBodyText;
 
     [Header("Disclaimer (every evaluation page + report.html)")]
     [TextArea(2, 5)]
@@ -166,6 +188,7 @@ public class SummaryScreenController : MonoBehaviour
     private static readonly Color CellHeader     = new Color(0.08f, 0.12f, 0.18f, 0.95f);
     private static readonly Color CellScored     = new Color(0.20f, 0.29f, 0.40f, 1f);
 
+    private bool isTransitioningScene = false;
     private static Sprite cachedRoundedSprite;
     private static Sprite cachedBarSprite;
 
@@ -238,6 +261,7 @@ public class SummaryScreenController : MonoBehaviour
         BindButton(buttonOverviewDrillDown, () => ShowPage(DialoguePageIndex));
         BindButton(buttonRestart, RestartSimulation);
         BindButton(buttonMainMenu, ReturnToMainMenu);
+        BindButton(buttonExit, ExitSimulation);
         BindButton(p5SaveButton, SaveEvaluation);
         BindButton(p5DontSaveButton, DontSaveEvaluation);
 
@@ -262,6 +286,7 @@ public class SummaryScreenController : MonoBehaviour
     public void OpenSummaryScreen()
     {
         if (rootScreenObject != null) rootScreenObject.SetActive(true);
+        EnsureBetaDashboardBuilt();
         WireButtons();
         EvaluationDisclaimer.Text = disclaimer;
         if (disclaimerText != null) disclaimerText.text = EvaluationDisclaimer.Text;
@@ -271,6 +296,7 @@ public class SummaryScreenController : MonoBehaviour
         var debrief = gm != null ? gm.communicationDebrief : VRDemoGameManager.LastDebrief;
         matrixResult = EvaluationLogger.Instance.Evaluate(rubric, debrief);
 
+        PopulateBetaDashboard(debrief);
         PopulatePage0_Overview(rubric, debrief);
         PopulatePage1_Dialogue(debrief);
         PopulatePage2_Perineal();
@@ -278,11 +304,31 @@ public class SummaryScreenController : MonoBehaviour
         PopulatePage4_TableAndFinal();
         PopulatePage5_Matrix(rubric);
 
-        ShowPage(MinPageIndex);
+        if (betaDashboardRoot != null && page0Overview == null && page1Dialogue == null)
+        {
+            betaDashboardRoot.SetActive(true);
+            if (buttonRestart != null) buttonRestart.gameObject.SetActive(true);
+            if (buttonMainMenu != null) buttonMainMenu.gameObject.SetActive(true);
+            if (buttonExit != null) buttonExit.gameObject.SetActive(true);
+            PlayPageSound();
+        }
+        else
+        {
+            ShowPage(MinPageIndex);
+        }
     }
 
     public void ShowPage(int index)
     {
+        if (betaDashboardRoot != null && page0Overview == null && page1Dialogue == null)
+        {
+            betaDashboardRoot.SetActive(true);
+            if (buttonRestart != null) buttonRestart.gameObject.SetActive(true);
+            if (buttonMainMenu != null) buttonMainMenu.gameObject.SetActive(true);
+            if (buttonExit != null) buttonExit.gameObject.SetActive(true);
+            return;
+        }
+
         currentPageIndex = Mathf.Clamp(index, MinPageIndex, TotalPages - 1);
 
         if (page0Overview != null) page0Overview.SetActive(currentPageIndex == OverviewPageIndex);
@@ -325,6 +371,776 @@ public class SummaryScreenController : MonoBehaviour
     public void PreviousPage()
     {
         if (currentPageIndex > MinPageIndex) ShowPage(currentPageIndex - 1);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // BETA DASHBOARD: SLEEK 3-SECTION SINGLE-SCREEN SUMMARY
+    // ═══════════════════════════════════════════════════════════════
+
+    public void EnsureBetaDashboardBuilt()
+    {
+        if (betaDashboardRoot != null && buttonExit != null) return;
+
+        GameObject root = rootScreenObject != null ? rootScreenObject : gameObject;
+        TMP_FontAsset font = null;
+        var existingTmp = root.GetComponentInChildren<TMP_Text>(true);
+        if (existingTmp != null) font = existingTmp.font;
+
+        Sprite panelSprite = root.GetComponent<Image>()?.sprite ?? GetRoundedSprite();
+        Sprite btnSprite = panelSprite;
+        var existingBtn = root.GetComponentInChildren<Button>(true);
+        if (existingBtn != null)
+        {
+            var btnImg = existingBtn.GetComponent<Image>();
+            if (btnImg != null && btnImg.sprite != null) btnSprite = btnImg.sprite;
+        }
+
+        if (root.transform.parent != null && root.transform.parent.name == "SummaryCanvas")
+        {
+            var canvasRt = root.transform.parent.GetComponent<RectTransform>();
+            if (canvasRt != null)
+            {
+                canvasRt.sizeDelta = new Vector2(820f, 620f);
+                canvasRt.localScale = Vector3.one * 0.0019f;
+            }
+        }
+        else if (root.transform.parent != null && root.transform.parent.name == "DialogueCanvas")
+        {
+            var rootRt = root.GetComponent<RectTransform>();
+            if (rootRt != null)
+            {
+                rootRt.anchorMin = new Vector2(0.5f, 0.5f);
+                rootRt.anchorMax = new Vector2(0.5f, 0.5f);
+                rootRt.pivot = new Vector2(0.5f, 0.5f);
+                rootRt.anchoredPosition = Vector2.zero;
+                rootRt.sizeDelta = new Vector2(820f, 620f);
+                rootRt.localScale = Vector3.one;
+            }
+        }
+
+        // Clear any legacy multi-page children so there is zero overlap
+        for (int i = root.transform.childCount - 1; i >= 0; i--)
+        {
+            var childGo = root.transform.GetChild(i).gameObject;
+            if (Application.isPlaying)
+            {
+                childGo.SetActive(false);
+                Destroy(childGo);
+            }
+            else
+            {
+                DestroyImmediate(childGo);
+            }
+        }
+
+        page0Overview = null;
+        page1Dialogue = null;
+        page2Perineal = null;
+        page3Draping = null;
+        page4TableAndFinal = null;
+        page5Matrix = null;
+        page6Gallery = null;
+        disclaimerText = null;
+        textPageIndicator = null;
+        buttonBack = null;
+        buttonOverview = null;
+        buttonNext = null;
+
+        ConstructBetaDashboardUI(this, font, panelSprite, btnSprite);
+    }
+
+    public static void ConstructBetaDashboardUI(SummaryScreenController c, TMP_FontAsset font, Sprite panelSprite, Sprite btnSprite)
+    {
+        if (c == null) return;
+        GameObject root = c.rootScreenObject != null ? c.rootScreenObject : c.gameObject;
+        Sprite pSprite = panelSprite != null ? panelSprite : GetRoundedSprite();
+        Sprite bSprite = btnSprite != null ? btnSprite : pSprite;
+
+        var rootImg = root.GetComponent<Image>() ?? root.AddComponent<Image>();
+        rootImg.sprite = pSprite;
+        rootImg.type = Image.Type.Sliced;
+        rootImg.color = new Color(0.032f, 0.052f, 0.098f, 0.985f);
+        rootImg.raycastTarget = false;
+
+        var rootOutline = root.GetComponent<Outline>() ?? root.AddComponent<Outline>();
+        rootOutline.effectColor = new Color(0.18f, 0.44f, 0.62f, 0.72f);
+        rootOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
+        var dashboard = CreateBetaRect("BetaDashboard", root.transform, new Vector2(0.028f, 0.140f), new Vector2(0.972f, 0.968f));
+        c.betaDashboardRoot = dashboard;
+
+        // 0. Header Bar
+        var headerBar = CreateBetaRect("HeaderBar", dashboard.transform, new Vector2(0f, 0.905f), new Vector2(1f, 0.995f));
+        var title = CreateBetaTMP(headerBar.transform, "Title", "SIMULATION SUMMARY", 17f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.96f, 0.98f, 1f, 1f), font);
+        SetBetaAnchors(title.rectTransform, 0.005f, 0f, 0.50f, 1f);
+
+        var toolsPillObj = CreateBetaRect("ToolsDroppedPill", headerBar.transform, new Vector2(0.52f, 0.08f), new Vector2(0.995f, 0.92f));
+        c.betaToolsDroppedPillBg = AddBetaRoundedImage(toolsPillObj, new Color(0.06f, 0.24f, 0.16f, 0.96f), bSprite, false);
+        AddBetaOutline(toolsPillObj, new Color(0.18f, 0.55f, 0.38f, 0.45f), new Vector2(1f, -1f));
+        c.betaToolsDroppedPillText = CreateBetaTMP(toolsPillObj.transform, "Text", "Tools Dropped - 0", 10f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.18f, 0.84f, 0.48f, 1f), font);
+        SetBetaAnchors(c.betaToolsDroppedPillText.rectTransform, 0.04f, 0.08f, 0.96f, 0.92f);
+        c.betaToolsDroppedPillText.enableAutoSizing = true;
+        c.betaToolsDroppedPillText.fontSizeMin = 8f;
+        c.betaToolsDroppedPillText.fontSizeMax = 10.5f;
+        c.betaToolsDroppedPillText.overflowMode = TextOverflowModes.Ellipsis;
+
+        var hdrDiv = CreateBetaRect("HeaderDivider", dashboard.transform, new Vector2(0f, 0.888f), new Vector2(1f, 0.892f));
+        AddBetaRoundedImage(hdrDiv, new Color(0.18f, 0.29f, 0.42f, 0.85f), null, false);
+
+        // 1. Card 1: Dialogue
+        var card1 = CreateBetaCard("Card_1_Dialogue", dashboard.transform, new Vector2(0f, 0.565f), new Vector2(1f, 0.868f), pSprite, new Color(0.22f, 0.74f, 0.97f, 0.90f));
+        var hdr1 = CreateBetaRect("HeaderRow", card1.transform, new Vector2(0.026f, 0.72f), new Vector2(0.976f, 0.94f));
+        var hdr1Title = CreateBetaTMP(hdr1.transform, "SectionTitle", "1. DIALOGUE", 12f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.22f, 0.74f, 0.97f, 1f), font);
+        SetBetaAnchors(hdr1Title.rectTransform, 0f, 0f, 0.74f, 1f);
+
+        var pill1Obj = CreateBetaRect("DialogueTierPill", hdr1.transform, new Vector2(0.80f, 0.04f), new Vector2(1f, 0.96f));
+        c.betaDialogueTierPillBg = AddBetaRoundedImage(pill1Obj, new Color(0.06f, 0.24f, 0.16f, 0.96f), bSprite, false);
+        c.betaDialogueTierPillText = CreateBetaTMP(pill1Obj.transform, "Text", "Perfect", 10.5f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.18f, 0.84f, 0.48f, 1f), font);
+        SetBetaAnchors(c.betaDialogueTierPillText.rectTransform, 0.06f, 0.06f, 0.94f, 0.94f);
+
+        var div1 = CreateBetaRect("Divider", card1.transform, new Vector2(0.026f, 0.675f), new Vector2(0.976f, 0.685f));
+        AddBetaRoundedImage(div1, new Color(0.16f, 0.26f, 0.38f, 0.75f), null, false);
+
+        c.betaDialogueSentenceText = CreateBetaTMP(card1.transform, "BuiltSentenceText", "<color=#94A3B8><b>Built Sentence:</b></color>  \"\"", 10.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.94f, 0.97f, 1f, 1f), font);
+        SetBetaAnchors(c.betaDialogueSentenceText.rectTransform, 0.026f, 0.34f, 0.976f, 0.64f);
+        c.betaDialogueSentenceText.enableAutoSizing = true;
+        c.betaDialogueSentenceText.fontSizeMin = 8.2f;
+        c.betaDialogueSentenceText.fontSizeMax = 10.5f;
+        c.betaDialogueSentenceText.overflowMode = TextOverflowModes.Ellipsis;
+
+        c.betaDialogueFeedbackText = CreateBetaTMP(card1.transform, "FeedbackText", "<color=#34D399><b>Feedback:</b></color> Clear introduction, ID check, and explanation.", 10f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.82f, 0.89f, 0.96f, 1f), font);
+        SetBetaAnchors(c.betaDialogueFeedbackText.rectTransform, 0.026f, 0.06f, 0.976f, 0.31f);
+        c.betaDialogueFeedbackText.enableAutoSizing = true;
+        c.betaDialogueFeedbackText.fontSizeMin = 8.2f;
+        c.betaDialogueFeedbackText.fontSizeMax = 10.2f;
+        c.betaDialogueFeedbackText.overflowMode = TextOverflowModes.Ellipsis;
+
+        // 2. Card 2: Perineal Cleaning
+        var card2 = CreateBetaCard("Card_2_PerinealCleaning", dashboard.transform, new Vector2(0f, 0.015f), new Vector2(0.486f, 0.535f), pSprite, new Color(0.22f, 0.74f, 0.97f, 0.90f));
+        var hdr2 = CreateBetaRect("HeaderRow", card2.transform, new Vector2(0.042f, 0.81f), new Vector2(0.965f, 0.94f));
+        var hdr2Title = CreateBetaTMP(hdr2.transform, "SectionTitle", "2. PERINEAL CLEANING", 11.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.22f, 0.74f, 0.97f, 1f), font);
+        SetBetaAnchors(hdr2Title.rectTransform, 0f, 0f, 0.52f, 1f);
+        hdr2Title.enableAutoSizing = true;
+        hdr2Title.fontSizeMin = 8.5f;
+        hdr2Title.fontSizeMax = 11.5f;
+
+        var pill2Obj = CreateBetaRect("CottonDroppedPill", hdr2.transform, new Vector2(0.54f, 0.04f), new Vector2(1f, 0.96f));
+        c.betaCottonPillBg = AddBetaRoundedImage(pill2Obj, new Color(0.06f, 0.24f, 0.16f, 0.96f), bSprite, false);
+        c.betaCottonPillText = CreateBetaTMP(pill2Obj.transform, "Text", "Cotton Dropped - 0", 9.5f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.18f, 0.84f, 0.48f, 1f), font);
+        SetBetaAnchors(c.betaCottonPillText.rectTransform, 0.05f, 0.06f, 0.95f, 0.94f);
+        c.betaCottonPillText.enableAutoSizing = true;
+        c.betaCottonPillText.fontSizeMin = 7.5f;
+        c.betaCottonPillText.fontSizeMax = 9.5f;
+
+        var div2 = CreateBetaRect("Divider", card2.transform, new Vector2(0.042f, 0.76f), new Vector2(0.965f, 0.77f));
+        AddBetaRoundedImage(div2, new Color(0.16f, 0.26f, 0.38f, 0.75f), null, false);
+
+        c.betaPerinealBodyText = CreateBetaTMP(card2.transform, "BodyText", "", 10f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.90f, 0.95f, 0.99f, 1f), font);
+        SetBetaAnchors(c.betaPerinealBodyText.rectTransform, 0.042f, 0.05f, 0.965f, 0.72f);
+        c.betaPerinealBodyText.enableAutoSizing = true;
+        c.betaPerinealBodyText.fontSizeMin = 8.0f;
+        c.betaPerinealBodyText.fontSizeMax = 10.2f;
+        c.betaPerinealBodyText.lineSpacing = 4f;
+        c.betaPerinealBodyText.overflowMode = TextOverflowModes.Ellipsis;
+
+        // 3. Card 3: Draping & Table Prep
+        var card3 = CreateBetaCard("Card_3_DrapingAndTablePrep", dashboard.transform, new Vector2(0.514f, 0.015f), new Vector2(1f, 0.535f), pSprite, new Color(0.22f, 0.74f, 0.97f, 0.90f));
+        var hdr3 = CreateBetaRect("HeaderRow", card3.transform, new Vector2(0.042f, 0.81f), new Vector2(0.965f, 0.94f));
+        var hdr3Title = CreateBetaTMP(hdr3.transform, "SectionTitle", "3. DRAPING & TABLE PREP", 11.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.22f, 0.74f, 0.97f, 1f), font);
+        SetBetaAnchors(hdr3Title.rectTransform, 0f, 0f, 0.64f, 1f);
+        hdr3Title.enableAutoSizing = true;
+        hdr3Title.fontSizeMin = 8.5f;
+        hdr3Title.fontSizeMax = 11.5f;
+
+        var pill3Obj = CreateBetaRect("DrapingTableStatusPill", hdr3.transform, new Vector2(0.66f, 0.04f), new Vector2(1f, 0.96f));
+        c.betaDrapingTablePillBg = AddBetaRoundedImage(pill3Obj, new Color(0.06f, 0.24f, 0.16f, 0.96f), bSprite, false);
+        c.betaDrapingTablePillText = CreateBetaTMP(pill3Obj.transform, "Text", "Clean", 9.5f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.18f, 0.84f, 0.48f, 1f), font);
+        SetBetaAnchors(c.betaDrapingTablePillText.rectTransform, 0.05f, 0.06f, 0.95f, 0.94f);
+        c.betaDrapingTablePillText.enableAutoSizing = true;
+        c.betaDrapingTablePillText.fontSizeMin = 7.5f;
+        c.betaDrapingTablePillText.fontSizeMax = 9.5f;
+
+        var div3 = CreateBetaRect("Divider", card3.transform, new Vector2(0.042f, 0.76f), new Vector2(0.965f, 0.77f));
+        AddBetaRoundedImage(div3, new Color(0.16f, 0.26f, 0.38f, 0.75f), null, false);
+
+        c.betaDrapingTableBodyText = CreateBetaTMP(card3.transform, "BodyText", "", 10f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.90f, 0.95f, 0.99f, 1f), font);
+        SetBetaAnchors(c.betaDrapingTableBodyText.rectTransform, 0.042f, 0.05f, 0.965f, 0.72f);
+        c.betaDrapingTableBodyText.enableAutoSizing = true;
+        c.betaDrapingTableBodyText.fontSizeMin = 8.0f;
+        c.betaDrapingTableBodyText.fontSizeMax = 10.2f;
+        c.betaDrapingTableBodyText.lineSpacing = 4f;
+        c.betaDrapingTableBodyText.overflowMode = TextOverflowModes.Ellipsis;
+
+        // 4. Footer Bar with Exact 3 Buttons (Retry, Return to Menu, Exit)
+        var footer = CreateBetaRect("FooterNavBar", root.transform, new Vector2(0.028f, 0.022f), new Vector2(0.972f, 0.118f));
+        AddBetaRoundedImage(footer, new Color(0.055f, 0.090f, 0.150f, 0.96f), bSprite, false);
+        AddBetaOutline(footer, new Color(0.16f, 0.32f, 0.48f, 0.45f), new Vector2(1f, -1f));
+
+        c.buttonRestart = CreateBetaButton("Button_Retry", footer.transform, "Retry", new Vector2(0.020f, 0.14f), new Vector2(0.320f, 0.86f), new Color(0.13f, 0.58f, 0.38f, 0.96f), bSprite, font);
+        c.buttonMainMenu = CreateBetaButton("Button_MainMenu", footer.transform, "Return to Menu", new Vector2(0.350f, 0.14f), new Vector2(0.650f, 0.86f), new Color(0.14f, 0.44f, 0.72f, 0.96f), bSprite, font);
+        c.buttonExit = CreateBetaButton("Button_Exit", footer.transform, "Exit", new Vector2(0.680f, 0.14f), new Vector2(0.980f, 0.86f), new Color(0.56f, 0.18f, 0.22f, 0.96f), bSprite, font);
+    }
+
+    private static GameObject CreateBetaRect(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = Vector2.zero;
+        return go;
+    }
+
+    private static void SetBetaAnchors(RectTransform rt, float xMin, float yMin, float xMax, float yMax)
+    {
+        rt.anchorMin = new Vector2(xMin, yMin);
+        rt.anchorMax = new Vector2(xMax, yMax);
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+    }
+
+    private static Image AddBetaRoundedImage(GameObject go, Color color, Sprite sprite, bool raycast = true)
+    {
+        var img = go.GetComponent<Image>() ?? go.AddComponent<Image>();
+        img.color = color;
+        img.raycastTarget = raycast;
+        if (sprite != null)
+        {
+            img.sprite = sprite;
+            img.type = Image.Type.Sliced;
+        }
+        return img;
+    }
+
+    private static void AddBetaOutline(GameObject go, Color color, Vector2 dist)
+    {
+        var ol = go.GetComponent<Outline>() ?? go.AddComponent<Outline>();
+        ol.effectColor = color;
+        ol.effectDistance = dist;
+    }
+
+    private static GameObject CreateBetaCard(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, Sprite panelSprite, Color accentColor)
+    {
+        var box = CreateBetaRect(name, parent, anchorMin, anchorMax);
+        AddBetaRoundedImage(box, new Color(0.062f, 0.102f, 0.168f, 0.92f), panelSprite, false);
+        AddBetaOutline(box, new Color(0.20f, 0.42f, 0.58f, 0.48f), new Vector2(1f, -1f));
+        box.AddComponent<RectMask2D>();
+
+        var accent = CreateBetaRect("LeftAccent", box.transform, new Vector2(0f, 0.04f), new Vector2(0.009f, 0.96f));
+        AddBetaRoundedImage(accent, accentColor, null, false);
+        return box;
+    }
+
+    private static TextMeshProUGUI CreateBetaTMP(Transform parent, string name, string text, float size, FontStyles style, TextAlignmentOptions align, Color color, TMP_FontAsset font)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.AddComponent<RectTransform>();
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        if (font != null) tmp.font = font;
+        tmp.text = text;
+        tmp.fontSize = size;
+        tmp.fontStyle = style;
+        tmp.alignment = align;
+        tmp.color = color;
+        tmp.raycastTarget = false;
+        return tmp;
+    }
+
+    private static Button CreateBetaButton(string name, Transform parent, string text, Vector2 anchorMin, Vector2 anchorMax, Color bgColor, Sprite btnSprite, TMP_FontAsset font)
+    {
+        var btnObj = CreateBetaRect(name, parent, anchorMin, anchorMax);
+        var btnImg = AddBetaRoundedImage(btnObj, bgColor, btnSprite, true);
+        AddBetaOutline(btnObj, new Color(0.32f, 0.72f, 0.90f, 0.45f), new Vector2(1f, -1f));
+        var btn = btnObj.AddComponent<Button>();
+        btn.targetGraphic = btnImg;
+        var colors = btn.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.16f, 1.16f, 1.16f, 1f);
+        colors.pressedColor = new Color(0.78f, 0.78f, 0.78f, 1f);
+        colors.selectedColor = colors.highlightedColor;
+        btn.colors = colors;
+
+        var txt = CreateBetaTMP(btnObj.transform, "Text", text, 11.5f, FontStyles.Bold, TextAlignmentOptions.Center, Color.white, font);
+        SetBetaAnchors(txt.rectTransform, 0.05f, 0.05f, 0.95f, 0.95f);
+        txt.enableAutoSizing = true;
+        txt.fontSizeMin = 9f;
+        txt.fontSizeMax = 12f;
+        return btn;
+    }
+
+    private void PopulateBetaDashboard(CommunicationDebriefData debrief)
+    {
+        var events = GetEvaluationEvents();
+
+        // 0. Header: Tools Dropped Pill
+        int totalDrops = GetTotalToolDropCount();
+        var dropEntries = GetToolDropBreakdownEntries();
+        if (totalDrops == 0 && dropEntries.Count == 0)
+        {
+            var dropEvents = FilterEventsByType(events, ClinicalViolationType.Floor_Drop_Instrument);
+            if (dropEvents.Count > 0)
+            {
+                totalDrops = dropEvents.Count;
+                foreach (var grp in dropEvents.GroupBy(e => CleanToolDropName(e)))
+                {
+                    dropEntries.Add(new ToolDropSummaryEntry { toolName = grp.Key, dropCount = grp.Count() });
+                }
+            }
+        }
+
+        if (totalDrops <= 0)
+        {
+            SetPill(betaToolsDroppedPillBg, betaToolsDroppedPillText, "Tools Dropped - 0", ColGreenBright, ColGreenPillBg);
+        }
+        else
+        {
+            string dropLabel = $"Tools Dropped - {totalDrops}";
+            if (dropEntries.Count > 0)
+            {
+                var topTools = dropEntries.Take(2).Select(d => $"{d.toolName} {d.dropCount}x").ToList();
+                if (dropEntries.Count > 2) topTools.Add($"and {dropEntries.Count - 2} more");
+                dropLabel = $"Tools Dropped - {totalDrops} ({string.Join(", ", topTools)})";
+            }
+            SetPill(betaToolsDroppedPillBg, betaToolsDroppedPillText, dropLabel, ColRedBright, ColRedPillBg);
+        }
+
+        // 1. Section 1: Dialogue (Perfect / Mid / Bad + Built Sentence + Short Feedback)
+        PopulateBetaDialogueSection(debrief, events);
+
+        // 2. Section 2: Perineal Cleaning (Stroke Faults + Cotton Dropped - N)
+        PopulateBetaPerinealSection(events);
+
+        // 3. Section 3: Draping & Table Prep (Combined Catches & Drops)
+        PopulateBetaDrapingAndTableSection(events, dropEntries, totalDrops);
+    }
+
+    private void PopulateBetaDialogueSection(CommunicationDebriefData debrief, List<EvaluationEvent> events)
+    {
+        string tierLabel = "Perfect";
+        Color tierFg = ColGreenBright;
+        Color tierBg = ColGreenPillBg;
+
+        if (debrief != null)
+        {
+            if (debrief.compositeScore >= 80f)
+            {
+                tierLabel = "Perfect";
+                tierFg = ColGreenBright;
+                tierBg = ColGreenPillBg;
+            }
+            else if (debrief.compositeScore >= 50f)
+            {
+                tierLabel = "Mid";
+                tierFg = ColAmberBright;
+                tierBg = ColAmberPillBg;
+            }
+            else
+            {
+                tierLabel = "Bad";
+                tierFg = ColRedBright;
+                tierBg = ColRedPillBg;
+            }
+        }
+        else
+        {
+            if (CountViolations(events, ClinicalViolationType.Inadequate_Dialogue) > 0)
+            {
+                tierLabel = "Bad";
+                tierFg = ColRedBright;
+                tierBg = ColRedPillBg;
+            }
+            else if (CountViolations(events, ClinicalViolationType.Suboptimal_Dialogue) > 0)
+            {
+                tierLabel = "Mid";
+                tierFg = ColAmberBright;
+                tierBg = ColAmberPillBg;
+            }
+        }
+
+        SetPill(betaDialogueTierPillBg, betaDialogueTierPillText, tierLabel, tierFg, tierBg);
+
+        if (betaDialogueSentenceText != null)
+        {
+            string builtSentence = BuildAssembledDialogueSentence(debrief);
+            betaDialogueSentenceText.text = string.IsNullOrEmpty(builtSentence)
+                ? "<color=#94A3B8><b>Built Sentence:</b></color>  <i>No patient dialogue statement was submitted.</i>"
+                : $"<color=#94A3B8><b>Built Sentence:</b></color>  \"{builtSentence}\"";
+        }
+
+        if (betaDialogueFeedbackText != null)
+        {
+            betaDialogueFeedbackText.text = BuildShortDialogueFeedback(debrief, tierLabel, events);
+        }
+    }
+
+    private static string BuildAssembledDialogueSentence(CommunicationDebriefData debrief)
+    {
+        if (debrief?.decisionEntries == null || debrief.decisionEntries.Count == 0)
+            return string.Empty;
+
+        var parts = new List<string>();
+        foreach (var entry in debrief.decisionEntries)
+        {
+            if (entry != null && !string.IsNullOrWhiteSpace(entry.selectedPhrase))
+            {
+                parts.Add(entry.selectedPhrase.Trim());
+            }
+        }
+        return string.Join(" ", parts);
+    }
+
+    private static string BuildShortDialogueFeedback(CommunicationDebriefData debrief, string tierLabel, List<EvaluationEvent> events)
+    {
+        bool earlyToolTouch = CountViolations(events, ClinicalViolationType.Tool_Handled_Before_Consent) > 0;
+        string earlyNote = earlyToolTouch ? "  <color=#F87171>(Touched instruments before consent)</color>" : string.Empty;
+
+        if (tierLabel == "Perfect")
+        {
+            return $"<color=#34D399><b>Feedback:</b></color> Clear student nurse introduction, two-way patient ID check, and reassuring procedure explanation.{earlyNote}";
+        }
+
+        var weakReasons = new List<string>();
+        if (debrief?.decisionEntries != null)
+        {
+            foreach (var entry in debrief.decisionEntries)
+            {
+                if (entry == null || !entry.isSuboptimalOrWrong) continue;
+                string slotShort = ShortDialogueSlotName(entry.slotLabel);
+                string note = CleanFaultText(entry.whyWrongNote);
+                if (!string.IsNullOrEmpty(note))
+                {
+                    // Keep only the first sentence of whyWrongNote for sleekness
+                    int dot = note.IndexOf('.');
+                    if (dot > 0 && dot < 85) note = note.Substring(0, dot);
+                    weakReasons.Add($"{slotShort}: {note}");
+                }
+                else
+                {
+                    weakReasons.Add(slotShort);
+                }
+            }
+        }
+
+        string tagColor = tierLabel == "Mid" ? "#FBBF24" : "#F87171";
+        if (weakReasons.Count > 0)
+        {
+            return $"<color={tagColor}><b>Feedback:</b></color> Improve {string.Join("  •  ", weakReasons.Take(2))}.{earlyNote}";
+        }
+
+        return tierLabel == "Mid"
+            ? $"<color=#FBBF24><b>Feedback:</b></color> Acceptable tone, but lacked complete two-way ID verification or sensory preparation.{earlyNote}"
+            : $"<color=#F87171><b>Feedback:</b></color> Inadequate consent statement — introduce your role, verify patient ID, and explain the procedure.{earlyNote}";
+    }
+
+    private static string ShortDialogueSlotName(string slotLabel)
+    {
+        if (string.IsNullOrEmpty(slotLabel)) return "Phrase";
+        string lower = slotLabel.ToLowerInvariant();
+        if (lower.Contains("intro")) return "Greeting";
+        if (lower.Contains("ident") || lower.Contains("verif")) return "Patient ID";
+        if (lower.Contains("explain") || lower.Contains("proced") || lower.Contains("sensory")) return "Explanation";
+        return slotLabel;
+    }
+
+    private void PopulateBetaPerinealSection(List<EvaluationEvent> events)
+    {
+        int affectedCottons = GetAffectedCottonCount();
+        if (affectedCottons == 0)
+        {
+            affectedCottons = CountViolations(events,
+                ClinicalViolationType.Reused_Cotton_Ball,
+                ClinicalViolationType.Contaminated_Drop_Outside_Basin);
+        }
+
+        Color cottonFg = affectedCottons == 0 ? ColGreenBright : ColRedBright;
+        Color cottonBg = affectedCottons == 0 ? ColGreenPillBg : ColRedPillBg;
+        SetPill(betaCottonPillBg, betaCottonPillText, $"Cotton Dropped - {affectedCottons}", cottonFg, cottonBg);
+
+        if (betaPerinealBodyText == null) return;
+
+        var rawFaults = new List<string>();
+        foreach (var e in events)
+        {
+            if (e == null || e.isCorrect) continue;
+
+            if (e.violationType == ClinicalViolationType.Out_Of_Order_Stroke.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                if (!string.IsNullOrEmpty(detail))
+                {
+                    rawFaults.Add(detail);
+                }
+                else
+                {
+                    rawFaults.Add(CleanFaultText(e.action));
+                }
+            }
+            else if (e.violationType == ClinicalViolationType.Reverse_Wipe_Direction.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                rawFaults.Add(!string.IsNullOrEmpty(detail)
+                    ? detail
+                    : "Wiped upward in reverse direction (wipe top to bottom)");
+            }
+            else if (e.violationType == ClinicalViolationType.Wrong_Washing_Area.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                if (string.IsNullOrEmpty(detail)) detail = CleanFaultText(e.action);
+                if (!detail.StartsWith("Poured", StringComparison.OrdinalIgnoreCase) &&
+                    !detail.StartsWith("Water", StringComparison.OrdinalIgnoreCase))
+                {
+                    detail = $"Water Wash: Poured onto {detail} instead of perineum";
+                }
+                else if (!detail.StartsWith("Water Wash:", StringComparison.OrdinalIgnoreCase))
+                {
+                    detail = $"Water Wash: {detail}";
+                }
+                rawFaults.Add(detail);
+            }
+            else if (e.violationType == ClinicalViolationType.Wrong_Antiseptic_Solution.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                rawFaults.Add(!string.IsNullOrEmpty(detail) ? detail : "Applied wrong antiseptic solution for current step");
+            }
+            else if (e.violationType == ClinicalViolationType.Forceps_Transfer_Error.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                rawFaults.Add(!string.IsNullOrEmpty(detail)
+                    ? $"Used Pickup forceps on perineum ({detail})"
+                    : "Used Pickup forceps instead of Handling forceps");
+            }
+            else if (e.violationType == ClinicalViolationType.Floor_Drop_Instrument.ToString() && e.step >= 2 && e.step <= 5)
+            {
+                string toolName = CleanToolDropName(e);
+                if (toolName.IndexOf("cotton", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    rawFaults.Add($"Tool Dropped: {toolName}");
+                }
+            }
+        }
+
+        var bullets = GroupAndCapBullets(rawFaults, 4);
+        if (bullets.Count == 0)
+        {
+            betaPerinealBodyText.text =
+                "<color=#34D399><b>✓ Clean Perineal Execution</b></color>\n" +
+                "• All 9 cleansing strokes followed the anatomical sequence.\n" +
+                "• Warm water wash and antiseptic rinse stayed on target.";
+        }
+        else
+        {
+            betaPerinealBodyText.text =
+                "<color=#F87171><b>Stroke & Cleaning Faults:</b></color>\n" +
+                string.Join("\n", bullets);
+        }
+    }
+
+    private void PopulateBetaDrapingAndTableSection(List<EvaluationEvent> events, List<ToolDropSummaryEntry> dropEntries, int totalDrops)
+    {
+        var rawCatches = new List<string>();
+
+        foreach (var e in events)
+        {
+            if (e == null || e.isCorrect) continue;
+
+            if (e.violationType == ClinicalViolationType.Out_Of_Order_Drape.ToString())
+            {
+                rawCatches.Add(FormatOutOfOrderDrapeCatch(e.detail, e.action));
+            }
+            else if (e.violationType == ClinicalViolationType.One_Handed_Drape_Violation.ToString())
+            {
+                bool isMayo = (!string.IsNullOrEmpty(e.detail) && e.detail.IndexOf("Mayo", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                              (!string.IsNullOrEmpty(e.action) && e.action.IndexOf("Mayo", StringComparison.OrdinalIgnoreCase) >= 0);
+                rawCatches.Add(isMayo
+                    ? "Draping: Unfolded Mayo Stand drape with 1 hand"
+                    : "Draping: Unfolded mother drape with 1 hand");
+            }
+            else if (e.violationType == ClinicalViolationType.Unsterile_Mayo_Placement_Violation.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                rawCatches.Add(!string.IsNullOrEmpty(detail)
+                    ? $"Mayo Stand: {detail}"
+                    : "Mayo Stand: Placed instrument on bare un-draped tray");
+            }
+            else if (e.violationType == ClinicalViolationType.Incorrect_Table_Slot.ToString())
+            {
+                string detail = CleanFaultText(e.detail);
+                if (!string.IsNullOrEmpty(detail) && detail.Contains(";"))
+                {
+                    foreach (var part in detail.Split(';'))
+                    {
+                        string trimmed = part.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                            rawCatches.Add($"Table Prep: {trimmed}");
+                    }
+                }
+                else
+                {
+                    rawCatches.Add(!string.IsNullOrEmpty(detail)
+                        ? $"Table Prep: {detail}"
+                        : "Table Prep: Misplaced instrument on Mayo tray");
+                }
+            }
+            else if (e.violationType == ClinicalViolationType.Floor_Drop_Instrument.ToString() && (e.step >= 6 || e.step == 0))
+            {
+                string toolName = CleanToolDropName(e);
+                if (toolName.IndexOf("cotton", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    rawCatches.Add($"Tool Dropped: {toolName}");
+                }
+            }
+        }
+
+        // If tool drops were recorded in ToolDropCounts/toolDropBreakdown but not already captured as step 6/7 events
+        bool hasDropLine = rawCatches.Any(c => c.StartsWith("Tool Dropped:", StringComparison.OrdinalIgnoreCase));
+        if (!hasDropLine && totalDrops > 0 && dropEntries != null && dropEntries.Count > 0)
+        {
+            var summaryParts = dropEntries.Take(3).Select(d => $"{d.toolName} {d.dropCount}x");
+            rawCatches.Add($"Tools Dropped: {string.Join(", ", summaryParts)}");
+        }
+
+        int issueCount = rawCatches.Count;
+        if (issueCount == 0)
+        {
+            SetPill(betaDrapingTablePillBg, betaDrapingTablePillText, "Clean", ColGreenBright, ColGreenPillBg);
+        }
+        else
+        {
+            SetPill(betaDrapingTablePillBg, betaDrapingTablePillText,
+                $"{issueCount} Issue{(issueCount == 1 ? "" : "s")}",
+                ColAmberBright, ColAmberPillBg);
+        }
+
+        if (betaDrapingTableBodyText == null) return;
+
+        var bullets = GroupAndCapBullets(rawCatches, 4);
+        if (bullets.Count == 0)
+        {
+            betaDrapingTableBodyText.text =
+                "<color=#34D399><b>✓ Draping & Table Setup Clean</b></color>\n" +
+                "• All 4 mother zones & Mayo Stand draped in sterile order.\n" +
+                "• All 6 surgical instruments locked in their designated slots.";
+        }
+        else
+        {
+            betaDrapingTableBodyText.text =
+                "<color=#F87171><b>Draping & Table Catches:</b></color>\n" +
+                string.Join("\n", bullets);
+        }
+    }
+
+    private static string FormatOutOfOrderDrapeCatch(string detail, string action)
+    {
+        string src = !string.IsNullOrWhiteSpace(detail) ? detail : action;
+        if (string.IsNullOrWhiteSpace(src))
+            return "Draping: Placed sterile drape out of sequence";
+
+        // Parse "Target: <Expected>, Placed: <Actual>"
+        int targetIdx = src.IndexOf("Target:", StringComparison.OrdinalIgnoreCase);
+        int placedIdx = src.IndexOf("Placed:", StringComparison.OrdinalIgnoreCase);
+        if (targetIdx >= 0 && placedIdx > targetIdx)
+        {
+            string expected = src.Substring(targetIdx + 7, placedIdx - (targetIdx + 7)).Trim().TrimEnd(',');
+            string placed = src.Substring(placedIdx + 7).Trim();
+            return $"Draping: Placed {CleanDrapeZoneLabel(placed)} first/out of order (expected {CleanDrapeZoneLabel(expected)})";
+        }
+
+        return $"Draping: {CleanFaultText(src)}";
+    }
+
+    private static string CleanDrapeZoneLabel(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "Drape";
+        string s = raw.Trim();
+        int paren = s.IndexOf('(');
+        if (paren > 0) s = s.Substring(0, paren).Trim();
+        if (s.Length > 2 && char.IsDigit(s[0]) && s[1] == '.')
+            s = s.Substring(2).Trim();
+        return s;
+    }
+
+    private static string CleanToolDropName(EvaluationEvent e)
+    {
+        if (e == null) return "Instrument";
+        if (!string.IsNullOrWhiteSpace(e.detail))
+            return VRDemoGameManager.NormalizeToolDisplayName(CleanFaultText(e.detail));
+        if (!string.IsNullOrWhiteSpace(e.action))
+        {
+            string act = CleanFaultText(e.action);
+            if (act.StartsWith("Dropped ", StringComparison.OrdinalIgnoreCase))
+                act = act.Substring(8).Trim();
+            return VRDemoGameManager.NormalizeToolDisplayName(act);
+        }
+        return "Instrument";
+    }
+
+    private static string CleanFaultText(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        string s = raw.Trim().TrimEnd('.');
+        // Strip legacy penalty suffixes like "(-5 pts)" or "(Total tool drops: ...)"
+        int tierIdx = s.IndexOf("(Total tool drops:", StringComparison.OrdinalIgnoreCase);
+        if (tierIdx >= 0) s = s.Substring(0, tierIdx).Trim();
+        int cottonIdx = s.IndexOf("(Affected cottons:", StringComparison.OrdinalIgnoreCase);
+        if (cottonIdx >= 0) s = s.Substring(0, cottonIdx).Trim();
+        if (s.EndsWith("pts)", StringComparison.OrdinalIgnoreCase))
+        {
+            int openParen = s.LastIndexOf('(');
+            if (openParen > 0) s = s.Substring(0, openParen).Trim();
+        }
+        return s.TrimEnd('.');
+    }
+
+    private static List<string> GroupAndCapBullets(List<string> items, int maxBullets)
+    {
+        var result = new List<string>();
+        if (items == null || items.Count == 0) return result;
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var orderedKeys = new List<string>();
+        var displayMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var raw in items)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            string key = raw.Trim();
+            if (!counts.ContainsKey(key))
+            {
+                counts[key] = 0;
+                orderedKeys.Add(key);
+                displayMap[key] = key;
+            }
+            counts[key]++;
+        }
+
+        int limit = orderedKeys.Count > maxBullets ? maxBullets - 1 : orderedKeys.Count;
+        for (int i = 0; i < limit; i++)
+        {
+            string k = orderedKeys[i];
+            int c = counts[k];
+            string label = displayMap[k];
+            result.Add(c > 1 ? $"• {label} <color=#FBBF24>({c}x)</color>" : $"• {label}");
+        }
+
+        if (orderedKeys.Count > limit)
+        {
+            int remainingTypes = orderedKeys.Count - limit;
+            result.Add($"<color=#94A3B8>• and {remainingTypes} more recorded issue{(remainingTypes == 1 ? "" : "s")}</color>");
+        }
+
+        return result;
+    }
+
+    private List<EvaluationEvent> GetEvaluationEvents()
+    {
+        if (EvaluationLogger.Instance != null && EvaluationLogger.Instance.events != null && EvaluationLogger.Instance.events.Count > 0)
+            return EvaluationLogger.Instance.events;
+        if (VRDemoGameManager.LastCompletedRecord?.evaluationEvents != null && VRDemoGameManager.LastCompletedRecord.evaluationEvents.Count > 0)
+            return VRDemoGameManager.LastCompletedRecord.evaluationEvents;
+        return EvaluationLogger.Instance?.events ?? new List<EvaluationEvent>();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -1244,6 +2060,8 @@ public class SummaryScreenController : MonoBehaviour
 
     public void RestartSimulation()
     {
+        if (isTransitioningScene) return;
+        isTransitioningScene = true;
         EvaluationReportExporter.DiscardSession();
         PlayPageSound();
         Debug.Log("[SummaryScreen] Restarting simulation into MainScene...");
@@ -1252,10 +2070,26 @@ public class SummaryScreenController : MonoBehaviour
 
     public void ReturnToMainMenu()
     {
+        if (isTransitioningScene) return;
+        isTransitioningScene = true;
         EvaluationReportExporter.DiscardSession();
         PlayPageSound();
         Debug.Log("[SummaryScreen] Returning to Main Menu...");
         VRSceneTransitionFader.FadeToScene("MenuScene");
+    }
+
+    public void ExitSimulation()
+    {
+        if (isTransitioningScene) return;
+        isTransitioningScene = true;
+        EvaluationReportExporter.DiscardSession();
+        PlayPageSound();
+        Debug.Log("[SummaryScreen] Exiting application...");
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     private void PlayPageSound()

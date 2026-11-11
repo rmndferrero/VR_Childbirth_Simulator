@@ -660,12 +660,13 @@ public class PerinealAndDialogueIntegrationTests
 
         var controller = rootGo.GetComponent<SummaryScreenController>();
         Assert.IsNotNull(controller);
+        Assert.IsNotNull(controller.betaDashboardRoot);
 
         var rubric = Track(ScriptableObject.CreateInstance<SimulationScoringRubricSO>());
         var record = new SimulationRecord
         {
             playerName = "Student Nurse",
-            dateCompleted = "2026-11-11",
+            dateCompleted = "2026-11-12",
             finalScore = 85,
             affectedCottonBallCount = 3,
             cottonBallDeduction = 10,
@@ -689,6 +690,42 @@ public class PerinealAndDialogueIntegrationTests
                     severity = MistakeSeverity.Moderate,
                     time = 12.5f,
                     count = 1
+                },
+                new EvaluationEvent
+                {
+                    step = 3,
+                    action = "Out Of Order Stroke",
+                    detail = "[7.5% Scrub] Stroked Left Inner Thigh first (expected Right Labia Majora)",
+                    isCorrect = false,
+                    violationType = ClinicalViolationType.Out_Of_Order_Stroke.ToString(),
+                    criterion = MatrixCriterion.Sequence,
+                    severity = MistakeSeverity.Moderate,
+                    time = 18.0f,
+                    count = 1
+                },
+                new EvaluationEvent
+                {
+                    step = 6,
+                    action = "Out Of Order Drape",
+                    detail = "Target: 1. Under Buttocks, Placed: 3. Left Leg Drape",
+                    isCorrect = false,
+                    violationType = ClinicalViolationType.Out_Of_Order_Drape.ToString(),
+                    criterion = MatrixCriterion.Sequence,
+                    severity = MistakeSeverity.Moderate,
+                    time = 40.0f,
+                    count = 1
+                },
+                new EvaluationEvent
+                {
+                    step = 7,
+                    action = "Incorrect Table Slot",
+                    detail = "Slot 1: placed Curette instead of Forceps",
+                    isCorrect = false,
+                    violationType = ClinicalViolationType.Incorrect_Table_Slot.ToString(),
+                    criterion = MatrixCriterion.Technique,
+                    severity = MistakeSeverity.Moderate,
+                    time = 55.0f,
+                    count = 1
                 }
             }
         };
@@ -701,41 +738,65 @@ public class PerinealAndDialogueIntegrationTests
         explain.fullPhraseText = "I will gently wash the perineal area with warm water.";
         var debrief = CommunicationDebriefData.CreateFromEvaluation(90f, 90f, 90f, 90f, intro, ident, explain, new[] { intro, ident, explain }, 0);
 
+        EvaluationLogger.Instance.ResetSession();
         typeof(VRDemoGameManager).GetProperty("LastCompletedRecord", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { record });
         typeof(VRDemoGameManager).GetProperty("LastDebrief", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { debrief });
         typeof(VRDemoGameManager).GetProperty("LastRubric", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { rubric });
 
         controller.OpenSummaryScreen();
 
-        Assert.AreEqual("85/100", controller.ovHeroScoreText.text);
-        Assert.AreEqual("3", controller.ovCottonAffectedValueText.text);
-        Assert.AreEqual("-10", controller.ovCottonDeductionValueText.text);
-        Assert.IsTrue(controller.ovToolRowObjects[0].activeSelf);
-        Assert.AreEqual("Pitcher dropped", controller.ovToolRowLabelTexts[0].text);
-        Assert.AreEqual("1", controller.ovToolRowValueTexts[0].text);
-        Assert.IsFalse(controller.ovToolRowObjects[1].activeSelf);
-        Assert.AreEqual("-5", controller.ovToolDeductionValueText.text);
-        Assert.AreEqual("-15", controller.ovTotalDeductionsValueText.text);
-        Assert.IsTrue(controller.ovPerinealWashSubText.text.Contains("Perineal Washing"));
-        Assert.IsTrue(controller.ovPerinealCottonSubText.text.Contains("9-Cotton-Ball"));
-        Assert.IsTrue(controller.ovDrapeMotherSubText.text.Contains("Draping the Mother"));
-        Assert.IsTrue(controller.ovDrapeTableSubText.text.Contains("Draping the Table"));
+        // 1. Header Tools Dropped pill
+        Assert.IsTrue(controller.betaToolsDroppedPillText.text.Contains("Tools Dropped - 1"));
+        Assert.IsTrue(controller.betaToolsDroppedPillText.text.Contains("Pitcher"));
 
-        Assert.IsTrue(controller.page0Overview.activeSelf);
-        controller.ovStageButtons[0].onClick.Invoke();
-        Assert.IsFalse(controller.page0Overview.activeSelf);
-        Assert.IsTrue(controller.page1Dialogue.activeSelf);
+        // 2. Section 1: Dialogue (Perfect / Mid / Bad + Sentence + Feedback)
+        Assert.AreEqual("Perfect", controller.betaDialogueTierPillText.text);
+        Assert.IsTrue(controller.betaDialogueSentenceText.text.Contains("Hello, I am Nurse Elena."));
+        Assert.IsTrue(controller.betaDialogueFeedbackText.text.Contains("Feedback:"));
 
-        controller.ShowPage(2);
-        Assert.IsTrue(controller.page2Perineal.activeSelf);
-        controller.ShowPage(3);
-        Assert.IsTrue(controller.page3Draping.activeSelf);
-        controller.ShowPage(4);
-        Assert.IsTrue(controller.page4TableAndFinal.activeSelf);
-        controller.ShowPage(5);
-        Assert.IsTrue(controller.page5Matrix.activeSelf);
-        controller.ShowPage(6);
-        Assert.IsTrue(controller.page6Gallery.activeSelf);
+        // Verify Mid and Bad tier mapping as well
+        var midDebrief = CommunicationDebriefData.CreateFromEvaluation(65f, 65f, 65f, 65f, intro, ident, explain, new[] { intro, ident, explain }, 5);
+        typeof(VRDemoGameManager).GetProperty("LastDebrief", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { midDebrief });
+        controller.OpenSummaryScreen();
+        Assert.AreEqual("Mid", controller.betaDialogueTierPillText.text);
+
+        var badDebrief = CommunicationDebriefData.CreateFromEvaluation(30f, 30f, 30f, 30f, intro, ident, explain, new[] { intro, ident, explain }, 10);
+        typeof(VRDemoGameManager).GetProperty("LastDebrief", BindingFlags.Static | BindingFlags.Public)?.GetSetMethod(true)?.Invoke(null, new object[] { badDebrief });
+        controller.OpenSummaryScreen();
+        Assert.AreEqual("Bad", controller.betaDialogueTierPillText.text);
+
+        // 3. Section 2: Perineal Cleaning (Single Cotton Dropped - N count + specific faulted stroke)
+        Assert.AreEqual("Cotton Dropped - 3", controller.betaCottonPillText.text);
+        Assert.IsTrue(controller.betaPerinealBodyText.text.Contains("Stroked Left Inner Thigh first"));
+        Assert.IsTrue(controller.betaPerinealBodyText.text.Contains("left thigh/leg"));
+
+        // 4. Section 3: Draping & Table Prep (Combined catches)
+        Assert.IsTrue(controller.betaDrapingTableBodyText.text.Contains("Left Leg Drape"));
+        Assert.IsTrue(controller.betaDrapingTableBodyText.text.Contains("Slot 1: placed Curette instead of Forceps"));
+
+        // 5. Exact 3 Action Buttons active (Retry, Return to Menu, Exit)
+        Assert.IsNotNull(controller.buttonRestart);
+        Assert.IsNotNull(controller.buttonMainMenu);
+        Assert.IsNotNull(controller.buttonExit);
+        Assert.IsTrue(controller.buttonRestart.gameObject.activeSelf);
+        Assert.IsTrue(controller.buttonMainMenu.gameObject.activeSelf);
+        Assert.IsTrue(controller.buttonExit.gameObject.activeSelf);
+
+        // 6. Verify legacy 4-page hierarchy upgrades cleanly at runtime and 19 cotton drops never spam lines
+        record.affectedCottonBallCount = 19;
+        var legacyRoot = Track(new GameObject("LegacySummaryScreen", typeof(RectTransform), typeof(Image), typeof(SummaryScreenController)));
+        legacyRoot.transform.SetParent(canvasGo.transform, false);
+        var oldPage1 = new GameObject("Page_1_Dialogue", typeof(RectTransform));
+        oldPage1.transform.SetParent(legacyRoot.transform, false);
+        var legacyCtrl = legacyRoot.GetComponent<SummaryScreenController>();
+        legacyCtrl.page1Dialogue = oldPage1;
+        legacyCtrl.OpenSummaryScreen();
+
+        Assert.IsNull(legacyCtrl.page1Dialogue, "Legacy multi-page children must be cleared on upgrade.");
+        Assert.IsNotNull(legacyCtrl.betaDashboardRoot);
+        Assert.AreEqual("Cotton Dropped - 19", legacyCtrl.betaCottonPillText.text);
+        Assert.IsFalse(legacyCtrl.betaPerinealBodyText.text.Contains("Cotton ball dropped outside waste basin"),
+            "Cotton drops must only show in the Cotton Dropped - N badge, never as repeated bullet lines.");
     }
 
     [Test]
