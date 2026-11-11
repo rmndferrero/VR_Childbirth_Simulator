@@ -311,200 +311,411 @@ public static class BuildSimulationUI
 
     public static GameObject BuildSummaryScreen(Transform parent, TMP_FontAsset font)
     {
+        var panelSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Unity UI Samples/Textures and Sprites/Rounded UI/UIPanel.png");
+        var btnSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Unity UI Samples/Textures and Sprites/Rounded UI/UIButtonDefault.png");
+        var circleSprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/VRTemplateAssets/Sprites/UI/CircleMask.png");
+
         var root = CreateUIRect("SummaryScreen", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        AddImage(root, new Color(0.05f, 0.08f, 0.14f, 0.98f));
-        AddOutline(root, new Color(0.22f, 0.65f, 0.85f, 0.85f), new Vector2(2f, -2f));
+        var rootImg = AddRoundedImage(root, new Color(0.035f, 0.055f, 0.105f, 0.985f), panelSprite);
+        AddOutline(root, new Color(0.16f, 0.42f, 0.58f, 0.72f), new Vector2(1.5f, -1.5f));
 
         var controller = root.AddComponent<SummaryScreenController>();
         controller.rootScreenObject = root;
 
-        // Header Bar
-        var header = CreateUIRect("HeaderBar", root.transform, new Vector2(0f, 0.88f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
-        var hTitle = CreateTMPChild(header.transform, "Title", "SIMULATION SUMMARY", 17f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.28f, 0.80f, 0.98f), font);
-        hTitle.rectTransform.anchorMin = Vector2.zero;
-        hTitle.rectTransform.anchorMax = Vector2.one;
-        hTitle.rectTransform.offsetMin = Vector2.zero;
-        hTitle.rectTransform.offsetMax = Vector2.zero;
+        var pageContainer = CreateUIRect("PageContainer", root.transform, new Vector2(0.025f, 0.165f), new Vector2(0.975f, 0.965f), Vector2.zero, Vector2.zero);
 
-        // Page Container (Y ~ 0.20 to 0.88; the disclaimer strip sits between it and the footer)
-        var pageContainer = CreateUIRect("PageContainer", root.transform, new Vector2(0.02f, 0.20f), new Vector2(0.98f, 0.88f), Vector2.zero, Vector2.zero);
+        BuildSummaryPage0Overview(pageContainer.transform, controller, panelSprite, btnSprite, circleSprite, font);
+        BuildSummaryPage1Dialogue(pageContainer.transform, controller, panelSprite, font);
+        BuildSummaryPage2Perineal(pageContainer.transform, controller, panelSprite, font);
+        BuildSummaryPage3Draping(pageContainer.transform, controller, panelSprite, font);
+        BuildSummaryPage4TablePrep(pageContainer.transform, controller, panelSprite, font);
+        BuildSummaryPage5Matrix(pageContainer.transform, controller, panelSprite, btnSprite, font);
+        BuildSummaryPage6Gallery(pageContainer.transform, controller, panelSprite, font);
 
-        // ── PAGE 1: DIALOGUE & COMMUNICATION DEBRIEF ──
-        var p1 = CreateUIRect("Page_1_Dialogue", pageContainer.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        controller.page1Dialogue = p1;
-
-        var p1Rating = CreateTMPChild(p1.transform, "RatingBanner", "Communication score: 100%", 14.5f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.35f, 0.78f, 0.98f), font);
-        p1Rating.rectTransform.anchorMin = new Vector2(0.02f, 0.88f);
-        p1Rating.rectTransform.anchorMax = new Vector2(0.98f, 0.99f);
-        p1Rating.rectTransform.offsetMin = Vector2.zero;
-        p1Rating.rectTransform.offsetMax = Vector2.zero;
-        controller.p1OverallRatingText = p1Rating;
-
-        var p1Arch = CreateTMPChild(p1.transform, "ArchetypeTitle", "Communication summary", 12f, FontStyles.Italic, TextAlignmentOptions.TopLeft, new Color(0.75f, 0.85f, 0.95f), font);
-        p1Arch.rectTransform.anchorMin = new Vector2(0.02f, 0.79f);
-        p1Arch.rectTransform.anchorMax = new Vector2(0.98f, 0.88f);
-        p1Arch.rectTransform.offsetMin = Vector2.zero;
-        p1Arch.rectTransform.offsetMax = Vector2.zero;
-        controller.p1ArchetypeTitleText = p1Arch;
-
-        // 3 Bars
-        controller.p1BarProfessionalism = CreateMetricRow(p1.transform, "Row_Professionalism", 0.68f, "Professionalism & Role Decorum", out controller.p1TextProfessionalism, new Color(0.22f, 0.70f, 0.95f), font);
-        controller.p1BarEmpathy = CreateMetricRow(p1.transform, "Row_Empathy", 0.56f, "Compassion & Bedside Manner", out controller.p1TextEmpathy, new Color(0.95f, 0.60f, 0.20f), font);
-        controller.p1BarClarity = CreateMetricRow(p1.transform, "Row_Clarity", 0.44f, "Sensory & Procedural Preparation", out controller.p1TextClarity, new Color(0.25f, 0.80f, 0.50f), font);
-
-        // Debrief Notes Box (Y ~ 0.02 to 0.40)
-        var debriefBox = CreateUIRect("DebriefNotesBox", p1.transform, new Vector2(0.02f, 0.02f), new Vector2(0.98f, 0.40f), Vector2.zero, Vector2.zero);
-        AddImage(debriefBox, new Color(0.08f, 0.12f, 0.18f, 0.9f));
-        AddOutline(debriefBox, new Color(0.22f, 0.35f, 0.50f, 0.5f), new Vector2(1f, -1f));
-
-        var debriefLabel = CreateTMPChild(debriefBox.transform, "Label", "Communication notes:", 11.5f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.40f, 0.80f, 0.98f), font);
-        debriefLabel.rectTransform.anchorMin = new Vector2(0.02f, 0.76f);
-        debriefLabel.rectTransform.anchorMax = new Vector2(0.98f, 0.96f);
-        debriefLabel.rectTransform.offsetMin = Vector2.zero;
-        debriefLabel.rectTransform.offsetMax = Vector2.zero;
-
-        var debriefNotes = CreateTMPChild(debriefBox.transform, "Notes", "", 11f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
-        debriefNotes.rectTransform.anchorMin = new Vector2(0.02f, 0.36f);
-        debriefNotes.rectTransform.anchorMax = new Vector2(0.98f, 0.76f);
-        debriefNotes.rectTransform.offsetMin = Vector2.zero;
-        debriefNotes.rectTransform.offsetMax = Vector2.zero;
-        controller.p1DebriefNotesText = debriefNotes;
-
-        var critiques = CreateTMPChild(debriefBox.transform, "Critiques", "", 10.5f, FontStyles.Italic, TextAlignmentOptions.TopLeft, new Color(0.90f, 0.75f, 0.40f), font);
-        critiques.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
-        critiques.rectTransform.anchorMax = new Vector2(0.98f, 0.36f);
-        critiques.rectTransform.offsetMin = Vector2.zero;
-        critiques.rectTransform.offsetMax = Vector2.zero;
-        controller.p1CritiquesListText = critiques;
-
-        // ── PAGE 2: PERINEAL CARE & 9-BALL SCRUB ──
-        var p2 = CreateUIRect("Page_2_Perineal", pageContainer.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        controller.page2Perineal = p2;
-
-        var p2Title = CreateTMPChild(p2.transform, "Title", "PERINEAL CARE & 9-BALL ANTISEPTIC SCRUB PROTOCOL", 15f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.28f, 0.80f, 0.98f), font);
-        p2Title.rectTransform.anchorMin = new Vector2(0.02f, 0.88f);
-        p2Title.rectTransform.anchorMax = new Vector2(0.98f, 0.98f);
-        p2Title.rectTransform.offsetMin = Vector2.zero;
-        p2Title.rectTransform.offsetMax = Vector2.zero;
-
-        var p2Status = CreateTMPChild(p2.transform, "Status", "Steps recorded:", 12f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
-        p2Status.rectTransform.anchorMin = new Vector2(0.02f, 0.40f);
-        p2Status.rectTransform.anchorMax = new Vector2(0.98f, 0.86f);
-        p2Status.rectTransform.offsetMin = Vector2.zero;
-        p2Status.rectTransform.offsetMax = Vector2.zero;
-        controller.p2StatusSummaryText = p2Status;
-
-        var p2Mistakes = CreateTMPChild(p2.transform, "Mistakes", "Recorded mistakes (0):", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
-        p2Mistakes.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
-        p2Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.38f);
-        p2Mistakes.rectTransform.offsetMin = Vector2.zero;
-        p2Mistakes.rectTransform.offsetMax = Vector2.zero;
-        controller.p2MistakesListText = p2Mistakes;
-
-        // ── PAGE 3: STERILE DRAPING PROTOCOL ──
-        var p3 = CreateUIRect("Page_3_Draping", pageContainer.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        controller.page3Draping = p3;
-
-        var p3Title = CreateTMPChild(p3.transform, "Title", "STERILE DRAPING PROTOCOL (4 ANATOMICAL ZONES)", 15f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.28f, 0.80f, 0.98f), font);
-        p3Title.rectTransform.anchorMin = new Vector2(0.02f, 0.88f);
-        p3Title.rectTransform.anchorMax = new Vector2(0.98f, 0.98f);
-        p3Title.rectTransform.offsetMin = Vector2.zero;
-        p3Title.rectTransform.offsetMax = Vector2.zero;
-
-        var p3Status = CreateTMPChild(p3.transform, "Status", "Steps recorded:", 12f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
-        p3Status.rectTransform.anchorMin = new Vector2(0.02f, 0.40f);
-        p3Status.rectTransform.anchorMax = new Vector2(0.98f, 0.86f);
-        p3Status.rectTransform.offsetMin = Vector2.zero;
-        p3Status.rectTransform.offsetMax = Vector2.zero;
-        controller.p3StatusSummaryText = p3Status;
-
-        var p3Mistakes = CreateTMPChild(p3.transform, "Mistakes", "Recorded mistakes (0):", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
-        p3Mistakes.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
-        p3Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.38f);
-        p3Mistakes.rectTransform.offsetMin = Vector2.zero;
-        p3Mistakes.rectTransform.offsetMax = Vector2.zero;
-        controller.p3MistakesListText = p3Mistakes;
-
-        // ── PAGE 4: TABLE SETUP & MASTER SCORE ──
-        var p4 = CreateUIRect("Page_4_TableAndFinal", pageContainer.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-        controller.page4TableAndFinal = p4;
-
-        var p4Title = CreateTMPChild(p4.transform, "Title", "MAYO TABLE PREPARATION & RECORDED SCORE", 15f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.28f, 0.80f, 0.98f), font);
-        p4Title.rectTransform.anchorMin = new Vector2(0.02f, 0.88f);
-        p4Title.rectTransform.anchorMax = new Vector2(0.98f, 0.98f);
-        p4Title.rectTransform.offsetMin = Vector2.zero;
-        p4Title.rectTransform.offsetMax = Vector2.zero;
-
-        var p4Score = CreateTMPChild(p4.transform, "Score", "Recorded score: 100 / 100", 22f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.35f, 0.78f, 0.98f), font);
-        p4Score.rectTransform.anchorMin = new Vector2(0.02f, 0.74f);
-        p4Score.rectTransform.anchorMax = new Vector2(0.98f, 0.86f);
-        p4Score.rectTransform.offsetMin = Vector2.zero;
-        p4Score.rectTransform.offsetMax = Vector2.zero;
-        controller.p4FinalScoreText = p4Score;
-
-        var p4Mistakes = CreateTMPChild(p4.transform, "Mistakes", "Recorded mistakes (0):", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.95f, 0.95f, 0.95f), font);
-        p4Mistakes.rectTransform.anchorMin = new Vector2(0.02f, 0.04f);
-        p4Mistakes.rectTransform.anchorMax = new Vector2(0.98f, 0.72f);
-        p4Mistakes.rectTransform.offsetMin = Vector2.zero;
-        p4Mistakes.rectTransform.offsetMax = Vector2.zero;
-        controller.p4OverallMistakesListText = p4Mistakes;
-
-        // ── DISCLAIMER (shared by every page, between the pages and the footer) ──
-        var disclaimer = CreateTMPChild(root.transform, "Disclaimer", EvaluationDisclaimer.DefaultText, 10.5f, FontStyles.Normal, TextAlignmentOptions.Center, new Color(0.80f, 0.86f, 0.93f), font);
-        disclaimer.rectTransform.anchorMin = new Vector2(0.03f, 0.125f);
-        disclaimer.rectTransform.anchorMax = new Vector2(0.97f, 0.195f);
+        // Shared Disclaimer Strip between content and footer
+        var disclaimer = CreateTMPChild(root.transform, "Disclaimer", EvaluationDisclaimer.DefaultText, 9.5f, FontStyles.Normal, TextAlignmentOptions.Center, new Color(0.65f, 0.75f, 0.85f, 0.9f), font);
+        disclaimer.rectTransform.anchorMin = new Vector2(0.03f, 0.102f);
+        disclaimer.rectTransform.anchorMax = new Vector2(0.97f, 0.158f);
         disclaimer.rectTransform.offsetMin = Vector2.zero;
         disclaimer.rectTransform.offsetMax = Vector2.zero;
         disclaimer.enableAutoSizing = true;
-        disclaimer.fontSizeMin = 8f;
-        disclaimer.fontSizeMax = 10.5f;
+        disclaimer.fontSizeMin = 7.5f;
+        disclaimer.fontSizeMax = 9.5f;
         controller.disclaimerText = disclaimer;
 
-        // ── FOOTER NAVIGATION BAR ──
-        var footer = CreateUIRect("FooterNavBar", root.transform, new Vector2(0.02f, 0.01f), new Vector2(0.98f, 0.12f), Vector2.zero, Vector2.zero);
-        AddImage(footer, new Color(0.08f, 0.12f, 0.18f, 0.95f));
-
-        // Button Back
-        var backObj = CreateUIRect("Button_Back", footer.transform, new Vector2(0.02f, 0.15f), new Vector2(0.20f, 0.85f), Vector2.zero, Vector2.zero);
-        AddImage(backObj, new Color(0.18f, 0.28f, 0.38f, 0.95f));
-        controller.buttonBack = backObj.AddComponent<Button>();
-        var bTxt = CreateTMPChild(backObj.transform, "Text", "◀ Previous", 12.5f, FontStyles.Bold, TextAlignmentOptions.Center, Color.white, font);
-        bTxt.rectTransform.anchorMin = Vector2.zero;
-        bTxt.rectTransform.anchorMax = Vector2.one;
-        bTxt.rectTransform.offsetMin = Vector2.zero;
-        bTxt.rectTransform.offsetMax = Vector2.zero;
-
-        // Page Indicator
-        var indObj = CreateUIRect("Text_PageIndicator", footer.transform, new Vector2(0.22f, 0.15f), new Vector2(0.72f, 0.85f), Vector2.zero, Vector2.zero);
-        var pInd = CreateTMPChild(indObj.transform, "Text", "Page 1 of 4: Patient Communication", 13f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.85f, 0.92f, 0.98f), font);
-        pInd.rectTransform.anchorMin = Vector2.zero;
-        pInd.rectTransform.anchorMax = Vector2.one;
-        pInd.rectTransform.offsetMin = Vector2.zero;
-        pInd.rectTransform.offsetMax = Vector2.zero;
-        controller.textPageIndicator = pInd;
-
-        // Button Next
-        var nextObj = CreateUIRect("Button_Next", footer.transform, new Vector2(0.75f, 0.15f), new Vector2(0.98f, 0.85f), Vector2.zero, Vector2.zero);
-        AddImage(nextObj, new Color(0.15f, 0.55f, 0.85f, 0.95f));
-        controller.buttonNext = nextObj.AddComponent<Button>();
-        var nTxt = CreateTMPChild(nextObj.transform, "Text", "Next ▶", 12.5f, FontStyles.Bold, TextAlignmentOptions.Center, Color.white, font);
-        nTxt.rectTransform.anchorMin = Vector2.zero;
-        nTxt.rectTransform.anchorMax = Vector2.one;
-        nTxt.rectTransform.offsetMin = Vector2.zero;
-        nTxt.rectTransform.offsetMax = Vector2.zero;
-
-        // Button Restart
-        var restartObj = CreateUIRect("Button_Restart", footer.transform, new Vector2(0.75f, 0.15f), new Vector2(0.98f, 0.85f), Vector2.zero, Vector2.zero);
-        AddImage(restartObj, new Color(0.20f, 0.75f, 0.50f, 0.95f));
-        controller.buttonRestart = restartObj.AddComponent<Button>();
-        var rTxt = CreateTMPChild(restartObj.transform, "Text", "🔄 Restart", 12.5f, FontStyles.Bold, TextAlignmentOptions.Center, Color.white, font);
-        rTxt.rectTransform.anchorMin = Vector2.zero;
-        rTxt.rectTransform.anchorMax = Vector2.one;
-        rTxt.rectTransform.offsetMin = Vector2.zero;
-        rTxt.rectTransform.offsetMax = Vector2.zero;
-        restartObj.SetActive(false);
-
+        BuildSummaryFooter(root.transform, controller, btnSprite, font);
         return root;
+    }
+
+    private static void BuildSummaryPage0Overview(Transform parent, SummaryScreenController c, Sprite panelSprite, Sprite btnSprite, Sprite circleSprite, TMP_FontAsset font)
+    {
+        var p0 = CreateUIRect("Page_0_OverallSummary", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page0Overview = p0;
+
+        // Eyebrow + Hero Header (Y: 0.78..0.99)
+        var eyebrow = CreateTMPChild(p0.transform, "Eyebrow", "SIMULATION ASSESSMENT", 10f, FontStyles.Bold, TextAlignmentOptions.TopLeft, new Color(0.54f, 0.67f, 0.79f), font);
+        SetAnchors(eyebrow.rectTransform, 0.02f, 0.935f, 0.98f, 0.99f);
+
+        var title = CreateTMPChild(p0.transform, "Title", "Final Performance", 19f, FontStyles.Bold, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(title.rectTransform, 0.02f, 0.87f, 0.98f, 0.94f);
+
+        var heroScore = CreateTMPChild(p0.transform, "HeroScore", "85<size=55%><color=#7A92AD>/100</color></size>", 24f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.18f, 0.84f, 0.48f), font);
+        SetAnchors(heroScore.rectTransform, 0.02f, 0.795f, 0.45f, 0.875f);
+        c.ovHeroScoreText = heroScore;
+
+        var pillObj = CreateUIRect("CompetencyPill", p0.transform, new Vector2(0.67f, 0.808f), new Vector2(0.98f, 0.862f), Vector2.zero, Vector2.zero);
+        c.ovCompetencyPillBg = AddRoundedImage(pillObj, new Color(0.06f, 0.24f, 0.16f, 0.96f), btnSprite ?? panelSprite);
+        c.ovCompetencyPillText = CreateTMPChild(pillObj.transform, "Text", "Good performance", 10.5f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.18f, 0.84f, 0.48f), font);
+        SetAnchors(c.ovCompetencyPillText.rectTransform, 0.05f, 0.05f, 0.95f, 0.95f);
+
+        var barTrack = CreateUIRect("ProgressTrack", p0.transform, new Vector2(0.02f, 0.770f), new Vector2(0.98f, 0.788f), Vector2.zero, Vector2.zero);
+        AddRoundedImage(barTrack, new Color(0.11f, 0.16f, 0.24f, 1f), btnSprite ?? panelSprite);
+        var barFillObj = CreateUIRect("ProgressFill", barTrack.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.ovProgressFill = AddImage(barFillObj, new Color(0.18f, 0.84f, 0.48f));
+        c.ovProgressFill.type = Image.Type.Filled;
+        c.ovProgressFill.fillMethod = Image.FillMethod.Horizontal;
+        c.ovProgressFill.fillAmount = 0.85f;
+
+        CreateDivider(p0.transform, 0.748f);
+
+        // Performance Breakdown (Mandatory Exact 4 Top-Level Stages + Separated Sub-rows, Y: 0.435..0.735)
+        var pbHeader = CreateTMPChild(p0.transform, "PerfBreakdownHeader", "Performance breakdown", 12.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, Color.white, font);
+        SetAnchors(pbHeader.rectTransform, 0.02f, 0.695f, 0.98f, 0.742f);
+
+        c.ovStageButtons = new Button[4];
+        c.ovStagePillBgs = new Image[4];
+        c.ovStagePillTexts = new TMP_Text[4];
+
+        // 1. Dialogue
+        CreateOverviewStageRow(p0.transform, 0, "1. Dialogue", 0.640f, 0.690f, btnSprite, panelSprite, font, c);
+        // 2. Perineal Cleaning + ONLY 2 separated sub-rows
+        CreateOverviewStageRow(p0.transform, 1, "2. Perineal Cleaning", 0.586f, 0.634f, btnSprite, panelSprite, font, c);
+        c.ovPerinealWashSubText = CreateOverviewSubRow(p0.transform, "Sub_PerinealWash", "• Perineal Washing", 0.548f, 0.584f, font);
+        c.ovPerinealCottonSubText = CreateOverviewSubRow(p0.transform, "Sub_9Cotton", "• 9-Cotton-Ball Cleansing Technique", 0.512f, 0.548f, font);
+        // 3. Draping + 2 separated sub-rows
+        CreateOverviewStageRow(p0.transform, 2, "3. Draping", 0.460f, 0.508f, btnSprite, panelSprite, font, c);
+        c.ovDrapeMotherSubText = CreateOverviewSubRow(p0.transform, "Sub_DrapeMother", "• Draping the Mother", 0.422f, 0.458f, font);
+        c.ovDrapeTableSubText = CreateOverviewSubRow(p0.transform, "Sub_DrapeTable", "• Draping the Table", 0.386f, 0.422f, font);
+        // 4. Table Preparation
+        CreateOverviewStageRow(p0.transform, 3, "4. Table Preparation", 0.334f, 0.382f, btnSprite, panelSprite, font, c);
+
+        CreateDivider(p0.transform, 0.320f);
+
+        // Mistake Breakdown Ledger (Y: 0.125..0.312)
+        var mbHeader = CreateTMPChild(p0.transform, "MistakeBreakdownHeader", "Mistake breakdown", 12.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, Color.white, font);
+        SetAnchors(mbHeader.rectTransform, 0.02f, 0.278f, 0.98f, 0.316f);
+
+        c.ovCottonAffectedValueText = CreateLedgerRow(p0.transform, "Row_CottonAffected", "Cotton balls affected", "0", 0.244f, 0.276f, Color.white, font, out _);
+        c.ovCottonDeductionValueText = CreateLedgerRow(p0.transform, "Row_CottonDeduction", "Cotton ball deduction", "0", 0.212f, 0.244f, new Color(0.95f, 0.30f, 0.30f), font, out _);
+
+        c.ovToolRowObjects = new GameObject[4];
+        c.ovToolRowLabelTexts = new TMP_Text[4];
+        c.ovToolRowValueTexts = new TMP_Text[4];
+        for (int i = 0; i < 4; i++)
+        {
+            float yTop = 0.210f - i * 0.026f;
+            float yBot = yTop - 0.025f;
+            c.ovToolRowValueTexts[i] = CreateLedgerRow(p0.transform, $"Row_ToolDrop_{i}", "Dropped tools", "0", yBot, yTop, Color.white, font, out var lbl, out var rowGo);
+            c.ovToolRowLabelTexts[i] = lbl;
+            c.ovToolRowObjects[i] = rowGo;
+            if (i > 0) rowGo.SetActive(false);
+        }
+
+        c.ovToolHandlingNoteText = CreateTMPChild(p0.transform, "ToolHandlingNote", "All instruments were handled properly.", 9.5f, FontStyles.Italic, TextAlignmentOptions.MidlineLeft, new Color(0.55f, 0.72f, 0.65f), font);
+        SetAnchors(c.ovToolHandlingNoteText.rectTransform, 0.04f, 0.160f, 0.96f, 0.184f);
+
+        c.ovToolDeductionValueText = CreateLedgerRow(p0.transform, "Row_ToolDeduction", "Tool deduction", "0", 0.132f, 0.160f, new Color(0.95f, 0.30f, 0.30f), font, out _);
+        c.ovTotalDeductionsValueText = CreateLedgerRow(p0.transform, "Row_TotalDeductions", "Total deductions", "0", 0.104f, 0.132f, new Color(0.95f, 0.30f, 0.30f), font, out var totLbl);
+        totLbl.color = new Color(0.85f, 0.92f, 0.98f);
+
+        CreateDivider(p0.transform, 0.098f);
+
+        // CLINICAL FEEDBACK + Circular ↓ Drill-Down Button (Y: 0.00..0.095)
+        var cfLabel = CreateTMPChild(p0.transform, "CF_Label", "CLINICAL FEEDBACK", 9.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.55f, 0.67f, 0.78f), font);
+        SetAnchors(cfLabel.rectTransform, 0.02f, 0.072f, 0.85f, 0.096f);
+
+        c.ovFeedbackHeadingText = CreateTMPChild(p0.transform, "CF_Heading", "Instrument handling", 12f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, Color.white, font);
+        SetAnchors(c.ovFeedbackHeadingText.rectTransform, 0.02f, 0.045f, 0.85f, 0.074f);
+
+        c.ovFeedbackBodyText = CreateTMPChild(p0.transform, "CF_Body", "Maintain sterile field control of all instruments throughout the procedure.", 10f, FontStyles.Normal, TextAlignmentOptions.TopLeft, new Color(0.72f, 0.81f, 0.90f), font);
+        SetAnchors(c.ovFeedbackBodyText.rectTransform, 0.02f, 0.002f, 0.85f, 0.046f);
+        c.ovFeedbackBodyText.enableAutoSizing = true;
+        c.ovFeedbackBodyText.fontSizeMin = 8f;
+        c.ovFeedbackBodyText.fontSizeMax = 10.5f;
+
+        var drillObj = CreateUIRect("Button_DrillDown", p0.transform, new Vector2(0.90f, 0.015f), new Vector2(0.965f, 0.080f), Vector2.zero, Vector2.zero);
+        AddRoundedImage(drillObj, new Color(0.11f, 0.24f, 0.38f, 0.95f), circleSprite ?? btnSprite);
+        AddOutline(drillObj, new Color(0.28f, 0.78f, 0.96f, 0.75f), new Vector2(1f, -1f));
+        c.buttonOverviewDrillDown = drillObj.AddComponent<Button>();
+        var drillTxt = CreateTMPChild(drillObj.transform, "Arrow", "↓", 15f, FontStyles.Bold, TextAlignmentOptions.Center, Color.white, font);
+        SetAnchors(drillTxt.rectTransform, 0f, 0f, 1f, 1f);
+    }
+
+    private static void BuildSummaryPage1Dialogue(Transform parent, SummaryScreenController c, Sprite panelSprite, TMP_FontAsset font)
+    {
+        var p1 = CreateUIRect("Page_1_Dialogue", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page1Dialogue = p1;
+
+        var hdr = CreateTMPChild(p1.transform, "Header", "STAGE 1: DIALOGUE & CLINICAL DECISION-MAKING", 14f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.28f, 0.82f, 0.98f), font);
+        SetAnchors(hdr.rectTransform, 0.02f, 0.91f, 0.98f, 0.98f);
+
+        var p1Rating = CreateTMPChild(p1.transform, "RatingBanner", "Communication score: 100%", 13f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, Color.white, font);
+        SetAnchors(p1Rating.rectTransform, 0.02f, 0.84f, 0.98f, 0.90f);
+        c.p1OverallRatingText = p1Rating;
+
+        var p1Arch = CreateTMPChild(p1.transform, "ArchetypeTitle", "Communication summary", 11f, FontStyles.Italic, TextAlignmentOptions.MidlineLeft, new Color(0.75f, 0.85f, 0.95f), font);
+        SetAnchors(p1Arch.rectTransform, 0.02f, 0.785f, 0.98f, 0.835f);
+        c.p1ArchetypeTitleText = p1Arch;
+
+        c.p1BarProfessionalism = CreateMetricRow(p1.transform, "Row_Professionalism", 0.72f, "Professionalism & Role Decorum", out c.p1TextProfessionalism, new Color(0.22f, 0.70f, 0.95f), font);
+        c.p1BarEmpathy = CreateMetricRow(p1.transform, "Row_Empathy", 0.64f, "Compassion & Bedside Manner", out c.p1TextEmpathy, new Color(0.95f, 0.60f, 0.20f), font);
+        c.p1BarClarity = CreateMetricRow(p1.transform, "Row_Clarity", 0.56f, "Sensory & Procedural Preparation", out c.p1TextClarity, new Color(0.25f, 0.80f, 0.50f), font);
+
+        var debriefBox = CreateCardPanel("DialogueDecisionsCard", p1.transform, new Vector2(0.02f, 0.02f), new Vector2(0.98f, 0.49f), panelSprite);
+        var dNotes = CreateTMPChild(debriefBox.transform, "SummaryNote", "", 10.5f, FontStyles.Italic, TextAlignmentOptions.TopLeft, new Color(0.78f, 0.87f, 0.96f), font);
+        SetAnchors(dNotes.rectTransform, 0.02f, 0.80f, 0.98f, 0.96f);
+        c.p1DebriefNotesText = dNotes;
+
+        var critiques = CreateTMPChild(debriefBox.transform, "DecisionEntries", "", 10.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(critiques.rectTransform, 0.02f, 0.03f, 0.98f, 0.78f);
+        critiques.enableAutoSizing = true;
+        critiques.fontSizeMin = 8f;
+        critiques.fontSizeMax = 10.5f;
+        c.p1CritiquesListText = critiques;
+    }
+
+    private static void BuildSummaryPage2Perineal(Transform parent, SummaryScreenController c, Sprite panelSprite, TMP_FontAsset font)
+    {
+        var p2 = CreateUIRect("Page_2_Perineal", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page2Perineal = p2;
+
+        var hdr = CreateTMPChild(p2.transform, "Header", "STAGE 2: PERINEAL CLEANING (WASHING & 9-COTTON TECHNIQUE)", 14f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.28f, 0.82f, 0.98f), font);
+        SetAnchors(hdr.rectTransform, 0.02f, 0.91f, 0.98f, 0.98f);
+
+        var washCard = CreateCardPanel("Card_PerinealWashing", p2.transform, new Vector2(0.02f, 0.51f), new Vector2(0.98f, 0.88f), panelSprite);
+        c.p2WashCardText = CreateTMPChild(washCard.transform, "Body", "", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(c.p2WashCardText.rectTransform, 0.025f, 0.06f, 0.975f, 0.94f);
+        c.p2WashCardText.enableAutoSizing = true;
+        c.p2WashCardText.fontSizeMin = 9f;
+        c.p2WashCardText.fontSizeMax = 11.5f;
+
+        var cottonCard = CreateCardPanel("Card_NineBallTechnique", p2.transform, new Vector2(0.02f, 0.03f), new Vector2(0.98f, 0.48f), panelSprite);
+        c.p2CottonCardText = CreateTMPChild(cottonCard.transform, "Body", "", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(c.p2CottonCardText.rectTransform, 0.025f, 0.06f, 0.975f, 0.94f);
+        c.p2CottonCardText.enableAutoSizing = true;
+        c.p2CottonCardText.fontSizeMin = 9f;
+        c.p2CottonCardText.fontSizeMax = 11.5f;
+    }
+
+    private static void BuildSummaryPage3Draping(Transform parent, SummaryScreenController c, Sprite panelSprite, TMP_FontAsset font)
+    {
+        var p3 = CreateUIRect("Page_3_Draping", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page3Draping = p3;
+
+        var hdr = CreateTMPChild(p3.transform, "Header", "STAGE 3: STERILE DRAPING (MOTHER & MAYO TABLE)", 14f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.28f, 0.82f, 0.98f), font);
+        SetAnchors(hdr.rectTransform, 0.02f, 0.91f, 0.98f, 0.98f);
+
+        var motherCard = CreateCardPanel("Card_DrapingMother", p3.transform, new Vector2(0.02f, 0.51f), new Vector2(0.98f, 0.88f), panelSprite);
+        c.p3MotherCardText = CreateTMPChild(motherCard.transform, "Body", "", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(c.p3MotherCardText.rectTransform, 0.025f, 0.06f, 0.975f, 0.94f);
+        c.p3MotherCardText.enableAutoSizing = true;
+        c.p3MotherCardText.fontSizeMin = 9f;
+        c.p3MotherCardText.fontSizeMax = 11.5f;
+
+        var tableCard = CreateCardPanel("Card_DrapingTable", p3.transform, new Vector2(0.02f, 0.03f), new Vector2(0.98f, 0.48f), panelSprite);
+        c.p3TableCardText = CreateTMPChild(tableCard.transform, "Body", "", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(c.p3TableCardText.rectTransform, 0.025f, 0.06f, 0.975f, 0.94f);
+        c.p3TableCardText.enableAutoSizing = true;
+        c.p3TableCardText.fontSizeMin = 9f;
+        c.p3TableCardText.fontSizeMax = 11.5f;
+    }
+
+    private static void BuildSummaryPage4TablePrep(Transform parent, SummaryScreenController c, Sprite panelSprite, TMP_FontAsset font)
+    {
+        var p4 = CreateUIRect("Page_4_TableAndFinal", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page4TableAndFinal = p4;
+
+        var hdr = CreateTMPChild(p4.transform, "Header", "STAGE 4: TABLE PREPARATION & INSTRUMENT HANDLING", 14f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.28f, 0.82f, 0.98f), font);
+        SetAnchors(hdr.rectTransform, 0.02f, 0.91f, 0.98f, 0.98f);
+
+        var scoreTxt = CreateTMPChild(p4.transform, "ScoreBanner", "Recorded score: 100 / 100", 16f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.18f, 0.84f, 0.48f), font);
+        SetAnchors(scoreTxt.rectTransform, 0.02f, 0.84f, 0.98f, 0.90f);
+        c.p4FinalScoreText = scoreTxt;
+
+        var placeCard = CreateCardPanel("Card_Placements", p4.transform, new Vector2(0.02f, 0.46f), new Vector2(0.98f, 0.82f), panelSprite);
+        c.p4PlacementsCardText = CreateTMPChild(placeCard.transform, "Body", "", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(c.p4PlacementsCardText.rectTransform, 0.025f, 0.06f, 0.975f, 0.94f);
+        c.p4PlacementsCardText.enableAutoSizing = true;
+        c.p4PlacementsCardText.fontSizeMin = 9f;
+        c.p4PlacementsCardText.fontSizeMax = 11.5f;
+
+        var dropsCard = CreateCardPanel("Card_InstrumentDrops", p4.transform, new Vector2(0.02f, 0.03f), new Vector2(0.98f, 0.43f), panelSprite);
+        c.p4DropsCardText = CreateTMPChild(dropsCard.transform, "Body", "", 11.5f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+        SetAnchors(c.p4DropsCardText.rectTransform, 0.025f, 0.06f, 0.975f, 0.94f);
+        c.p4DropsCardText.enableAutoSizing = true;
+        c.p4DropsCardText.fontSizeMin = 9f;
+        c.p4DropsCardText.fontSizeMax = 11.5f;
+    }
+
+    private static void BuildSummaryPage5Matrix(Transform parent, SummaryScreenController c, Sprite panelSprite, Sprite btnSprite, TMP_FontAsset font)
+    {
+        var p5 = CreateUIRect("Page_5_DecisionMatrix", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page5Matrix = p5;
+
+        var hdr = CreateTMPChild(p5.transform, "Header", "DECISION MATRIX EVALUATION (WSM)", 14f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.28f, 0.82f, 0.98f), font);
+        SetAnchors(hdr.rectTransform, 0.02f, 0.91f, 0.98f, 0.98f);
+
+        c.p5ScoresText = CreateTMPChild(p5.transform, "MatrixScores", "Simulation score: 100 / 100   Decision matrix: 100.0 / 100", 11f, FontStyles.Normal, TextAlignmentOptions.MidlineLeft, Color.white, font);
+        SetAnchors(c.p5ScoresText.rectTransform, 0.02f, 0.82f, 0.98f, 0.90f);
+
+        var gridObj = CreateCardPanel("MatrixGridContainer", p5.transform, new Vector2(0.02f, 0.16f), new Vector2(0.98f, 0.80f), panelSprite);
+        c.p5GridContainer = gridObj.GetComponent<RectTransform>();
+
+        c.p5SaveStatusText = CreateTMPChild(p5.transform, "SaveStatus", "Save this evaluation (report, CSV, screenshots)?", 10.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.85f, 0.92f, 0.98f), font);
+        SetAnchors(c.p5SaveStatusText.rectTransform, 0.02f, 0.02f, 0.56f, 0.13f);
+
+        c.p5SaveButton = CreateSimpleButton("Button_SaveEvaluation", p5.transform, "Save Evaluation", new Vector2(0.58f, 0.02f), new Vector2(0.77f, 0.13f), new Color(0.14f, 0.52f, 0.34f, 0.95f), btnSprite, font);
+        c.p5DontSaveButton = CreateSimpleButton("Button_DontSave", p5.transform, "Don't Save", new Vector2(0.79f, 0.02f), new Vector2(0.98f, 0.13f), new Color(0.45f, 0.18f, 0.18f, 0.95f), btnSprite, font);
+        p5.SetActive(false);
+    }
+
+    private static void BuildSummaryPage6Gallery(Transform parent, SummaryScreenController c, Sprite panelSprite, TMP_FontAsset font)
+    {
+        var p6 = CreateUIRect("Page_6_MistakeGallery", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+        c.page6Gallery = p6;
+
+        c.p6HeaderText = CreateTMPChild(p6.transform, "GalleryHeader", "MISTAKE GALLERY", 14f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.28f, 0.82f, 0.98f), font);
+        SetAnchors(c.p6HeaderText.rectTransform, 0.02f, 0.91f, 0.98f, 0.98f);
+
+        c.p6Cards = new GameObject[2];
+        c.p6Thumbnails = new RawImage[2];
+        c.p6CardTexts = new TMP_Text[2];
+
+        for (int i = 0; i < 2; i++)
+        {
+            float yMax = i == 0 ? 0.88f : 0.44f;
+            float yMin = i == 0 ? 0.47f : 0.03f;
+            var card = CreateCardPanel($"GalleryCard_{i}", p6.transform, new Vector2(0.02f, yMin), new Vector2(0.98f, yMax), panelSprite);
+            c.p6Cards[i] = card;
+
+            var thumbGo = CreateUIRect("Thumbnail", card.transform, new Vector2(0.02f, 0.08f), new Vector2(0.32f, 0.92f), Vector2.zero, Vector2.zero);
+            c.p6Thumbnails[i] = thumbGo.AddComponent<RawImage>();
+            c.p6Thumbnails[i].color = new Color(0.15f, 0.20f, 0.28f, 1f);
+
+            c.p6CardTexts[i] = CreateTMPChild(card.transform, "CardText", "", 11f, FontStyles.Normal, TextAlignmentOptions.TopLeft, Color.white, font);
+            SetAnchors(c.p6CardTexts[i].rectTransform, 0.34f, 0.08f, 0.98f, 0.92f);
+            c.p6CardTexts[i].enableAutoSizing = true;
+            c.p6CardTexts[i].fontSizeMin = 8.5f;
+            c.p6CardTexts[i].fontSizeMax = 11f;
+        }
+        p6.SetActive(false);
+    }
+
+    private static void BuildSummaryFooter(Transform root, SummaryScreenController c, Sprite btnSprite, TMP_FontAsset font)
+    {
+        var footer = CreateUIRect("FooterNavBar", root, new Vector2(0.02f, 0.01f), new Vector2(0.98f, 0.098f), Vector2.zero, Vector2.zero);
+        AddRoundedImage(footer, new Color(0.07f, 0.11f, 0.17f, 0.96f), btnSprite);
+
+        c.buttonBack = CreateSimpleButton("Button_Back", footer.transform, "◀ Prev", new Vector2(0.012f, 0.14f), new Vector2(0.145f, 0.86f), new Color(0.16f, 0.25f, 0.35f, 0.95f), btnSprite, font);
+        c.buttonOverview = CreateSimpleButton("Button_Overview", footer.transform, "Overview", new Vector2(0.155f, 0.14f), new Vector2(0.285f, 0.86f), new Color(0.14f, 0.32f, 0.44f, 0.95f), btnSprite, font);
+
+        c.textPageIndicator = CreateTMPChild(footer.transform, "Text_PageIndicator", "1 / 6  •  Overall Simulation Assessment", 11f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.85f, 0.92f, 0.98f), font);
+        SetAnchors(c.textPageIndicator.rectTransform, 0.295f, 0.10f, 0.675f, 0.90f);
+        c.textPageIndicator.enableAutoSizing = true;
+        c.textPageIndicator.fontSizeMin = 8.5f;
+        c.textPageIndicator.fontSizeMax = 11.5f;
+
+        c.buttonNext = CreateSimpleButton("Button_Next", footer.transform, "Next ▶", new Vector2(0.685f, 0.14f), new Vector2(0.825f, 0.86f), new Color(0.14f, 0.52f, 0.82f, 0.95f), btnSprite, font);
+        c.buttonRestart = CreateSimpleButton("Button_Restart", footer.transform, "🔄 Restart", new Vector2(0.685f, 0.14f), new Vector2(0.825f, 0.86f), new Color(0.18f, 0.68f, 0.45f, 0.95f), btnSprite, font);
+        c.buttonRestart.gameObject.SetActive(false);
+
+        c.buttonMainMenu = CreateSimpleButton("Button_MainMenu", footer.transform, "⌂ Main Menu", new Vector2(0.835f, 0.14f), new Vector2(0.988f, 0.86f), new Color(0.14f, 0.22f, 0.34f, 0.95f), btnSprite, font);
+    }
+
+    private static void CreateOverviewStageRow(Transform parent, int idx, string title, float yMin, float yMax, Sprite btnSprite, Sprite panelSprite, TMP_FontAsset font, SummaryScreenController c)
+    {
+        var row = CreateUIRect($"StageRow_{idx}", parent, new Vector2(0.02f, yMin), new Vector2(0.98f, yMax), Vector2.zero, Vector2.zero);
+        AddRoundedImage(row, new Color(0.065f, 0.10f, 0.165f, 0.82f), panelSprite);
+        c.ovStageButtons[idx] = row.AddComponent<Button>();
+
+        var lbl = CreateTMPChild(row.transform, "Label", title, 11.5f, FontStyles.Bold, TextAlignmentOptions.MidlineLeft, new Color(0.93f, 0.96f, 0.99f), font);
+        SetAnchors(lbl.rectTransform, 0.025f, 0f, 0.68f, 1f);
+
+        var pillObj = CreateUIRect("Pill", row.transform, new Vector2(0.71f, 0.16f), new Vector2(0.98f, 0.84f), Vector2.zero, Vector2.zero);
+        c.ovStagePillBgs[idx] = AddRoundedImage(pillObj, new Color(0.06f, 0.24f, 0.16f, 0.96f), btnSprite ?? panelSprite);
+        c.ovStagePillTexts[idx] = CreateTMPChild(pillObj.transform, "Text", "Passed", 9.5f, FontStyles.Bold, TextAlignmentOptions.Center, new Color(0.18f, 0.84f, 0.48f), font);
+        SetAnchors(c.ovStagePillTexts[idx].rectTransform, 0.04f, 0.04f, 0.96f, 0.96f);
+    }
+
+    private static TMP_Text CreateOverviewSubRow(Transform parent, string name, string label, float yMin, float yMax, TMP_FontAsset font)
+    {
+        var row = CreateUIRect(name, parent, new Vector2(0.055f, yMin), new Vector2(0.97f, yMax), Vector2.zero, Vector2.zero);
+        var left = CreateTMPChild(row.transform, "Label", label, 10f, FontStyles.Normal, TextAlignmentOptions.MidlineLeft, new Color(0.74f, 0.83f, 0.92f), font);
+        SetAnchors(left.rectTransform, 0f, 0f, 0.64f, 1f);
+
+        var right = CreateTMPChild(row.transform, "Status", "<color=#34D399>Passed</color>", 10f, FontStyles.Bold, TextAlignmentOptions.MidlineRight, Color.white, font);
+        SetAnchors(right.rectTransform, 0.65f, 0f, 1f, 1f);
+        return right;
+    }
+
+    private static TMP_Text CreateLedgerRow(Transform parent, string name, string labelText, string valText, float yMin, float yMax, Color valColor, TMP_FontAsset font, out TMP_Text leftOut)
+    {
+        return CreateLedgerRow(parent, name, labelText, valText, yMin, yMax, valColor, font, out leftOut, out _);
+    }
+
+    private static TMP_Text CreateLedgerRow(Transform parent, string name, string labelText, string valText, float yMin, float yMax, Color valColor, TMP_FontAsset font, out TMP_Text leftOut, out GameObject rowGo)
+    {
+        rowGo = CreateUIRect(name, parent, new Vector2(0.02f, yMin), new Vector2(0.98f, yMax), Vector2.zero, Vector2.zero);
+        leftOut = CreateTMPChild(rowGo.transform, "Label", labelText, 10.5f, FontStyles.Normal, TextAlignmentOptions.MidlineLeft, new Color(0.84f, 0.90f, 0.96f), font);
+        SetAnchors(leftOut.rectTransform, 0f, 0f, 0.78f, 1f);
+
+        var right = CreateTMPChild(rowGo.transform, "Value", valText, 11f, FontStyles.Bold, TextAlignmentOptions.MidlineRight, valColor, font);
+        SetAnchors(right.rectTransform, 0.78f, 0f, 1f, 1f);
+        return right;
+    }
+
+    private static GameObject CreateCardPanel(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, Sprite panelSprite)
+    {
+        var box = CreateUIRect(name, parent, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+        AddRoundedImage(box, new Color(0.065f, 0.105f, 0.17f, 0.90f), panelSprite);
+        AddOutline(box, new Color(0.20f, 0.42f, 0.58f, 0.48f), new Vector2(1f, -1f));
+        return box;
+    }
+
+    private static Button CreateSimpleButton(string name, Transform parent, string text, Vector2 anchorMin, Vector2 anchorMax, Color bgColor, Sprite btnSprite, TMP_FontAsset font)
+    {
+        var btnObj = CreateUIRect(name, parent, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+        AddRoundedImage(btnObj, bgColor, btnSprite);
+        AddOutline(btnObj, new Color(0.32f, 0.72f, 0.90f, 0.45f), new Vector2(1f, -1f));
+        var btn = btnObj.AddComponent<Button>();
+        var txt = CreateTMPChild(btnObj.transform, "Text", text, 11f, FontStyles.Bold, TextAlignmentOptions.Center, Color.white, font);
+        SetAnchors(txt.rectTransform, 0.04f, 0.04f, 0.96f, 0.96f);
+        return btn;
+    }
+
+    private static Image AddRoundedImage(GameObject go, Color color, Sprite sprite)
+    {
+        var img = AddImage(go, color);
+        if (sprite != null)
+        {
+            img.sprite = sprite;
+            img.type = Image.Type.Sliced;
+        }
+        return img;
+    }
+
+    private static void CreateDivider(Transform parent, float yAnchor)
+    {
+        var div = CreateUIRect("Divider", parent, new Vector2(0.02f, yAnchor), new Vector2(0.98f, yAnchor + 0.002f), Vector2.zero, Vector2.zero);
+        AddImage(div, new Color(0.18f, 0.27f, 0.38f, 0.85f)).raycastTarget = false;
+    }
+
+    private static void SetAnchors(RectTransform rt, float xMin, float yMin, float xMax, float yMax)
+    {
+        rt.anchorMin = new Vector2(xMin, yMin);
+        rt.anchorMax = new Vector2(xMax, yMax);
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
     }
 
     private static Image CreateMetricRow(Transform parent, string name, float yAnchorCenter, string label, out TMP_Text valText, Color barColor, TMP_FontAsset font)

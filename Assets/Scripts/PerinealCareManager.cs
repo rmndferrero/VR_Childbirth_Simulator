@@ -64,7 +64,19 @@ public class PerinealCareManager : MonoBehaviour
         if (cleaningProgressUI == null) cleaningProgressUI = FindFirstObjectByType<CleaningProgressUI>(FindObjectsInactive.Include);
         if (strokeGuideUI == null) strokeGuideUI = FindFirstObjectByType<StrokeGuideUI>(FindObjectsInactive.Include);
         if (strokeTrackingManager == null) strokeTrackingManager = FindFirstObjectByType<StrokeTrackingManager>();
-        if (pitcherPour == null) pitcherPour = FindFirstObjectByType<PitcherPour>();
+        if (pitcherPour == null || !pitcherPour.gameObject.activeInHierarchy || pitcherPour.gameObject.name.IndexOf("Old", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            var activePitchers = FindObjectsByType<PitcherPour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            foreach (var candidate in activePitchers)
+            {
+                if (candidate != null && candidate.gameObject.name.IndexOf("Old", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    pitcherPour = candidate;
+                    break;
+                }
+            }
+            if (pitcherPour == null) pitcherPour = FindFirstObjectByType<PitcherPour>();
+        }
         if (motherDrapingManager == null) motherDrapingManager = FindFirstObjectByType<MotherDrapingManager>();
 
         if (drapingGuideUI == null)
@@ -351,6 +363,18 @@ public class PerinealCareManager : MonoBehaviour
         if (VRDemoGameManager.Instance != null)
         {
             VRDemoGameManager.Instance.RecordMistake(message, penaltyPoints);
+        }
+    }
+
+    public void RecordClinicalViolation(ClinicalViolationType violationType, string message, int penaltyPoints = 5)
+    {
+        totalMistakes++;
+        procedureLog.Add(message);
+        Debug.LogWarning($"[Clinical Violation] [{violationType}] {message} (-{penaltyPoints} pts)");
+
+        if (VRDemoGameManager.Instance != null)
+        {
+            VRDemoGameManager.Instance.RecordViolation(violationType, message);
         }
     }
 }

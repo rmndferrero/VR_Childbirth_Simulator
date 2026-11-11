@@ -36,6 +36,7 @@ public class CottonState : MonoBehaviour
 
     private MeshRenderer meshRenderer;
     private Coroutine dropCo;
+    private bool hasTriggeredDropPenalty = false;
 
     void Awake()
     {
@@ -120,13 +121,7 @@ public class CottonState : MonoBehaviour
 
         if (currentHolder == null && !isSafelyDiscarded)
         {
-            // Dropped outside waste basin -> Record contamination penalty
-            if (VRDemoGameManager.Instance != null)
-            {
-                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped! Always discard used cotton into the waste basin.", MatrixDropType);
-            }
-
-            Destroy(gameObject);
+            HandleDroppedOutsideBasin("Sterile Violation: Cotton ball dropped! Always discard used cotton into the waste basin.");
         }
         dropCo = null;
     }
@@ -142,13 +137,26 @@ public class CottonState : MonoBehaviour
                 dropCo = null;
             }
 
-            if (VRDemoGameManager.Instance != null)
-            {
-                VRDemoGameManager.Instance.RecordDropPenalty("Cotton_Dropped_Floor", "Sterile Violation: Cotton ball dropped on the floor! Discard into the waste basin.", MatrixDropType);
-            }
-
-            Destroy(gameObject);
+            HandleDroppedOutsideBasin("Sterile Violation: Cotton ball dropped on the floor! Discard into the waste basin.");
         }
+    }
+
+    private void HandleDroppedOutsideBasin(string warning)
+    {
+        if (hasTriggeredDropPenalty || isSafelyDiscarded) return;
+        hasTriggeredDropPenalty = true;
+
+        if (VRDemoGameManager.Instance != null)
+        {
+            VRDemoGameManager.Instance.RecordCottonBallMistake(
+                GetInstanceID(),
+                MatrixDropType,
+                "Cotton ball dropped outside waste basin",
+                warning,
+                isUsed ? "Used cotton ball" : "Unused cotton ball");
+        }
+
+        Destroy(gameObject);
     }
 
     // Decision Matrix classification only: a used/soaked cotton dropped outside the basin is contaminated waste.

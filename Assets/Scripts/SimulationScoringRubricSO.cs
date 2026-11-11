@@ -26,7 +26,10 @@ public enum ClinicalViolationType
     Contaminated_Drop_Outside_Basin,
 
     // Decision Matrix only (no legacy penalty). Appended last to keep existing serialized values.
-    Forceps_Transfer_Error
+    Forceps_Transfer_Error,
+
+    // Step 2: Perineal water wash off-target area (e.g. pouring onto thighs/abdomen instead of perineum)
+    Wrong_Washing_Area
 }
 
 /// <summary>
@@ -67,6 +70,9 @@ public class SimulationScoringRubricSO : ScriptableObject
 
     [Tooltip("Penalty for attempting to wipe with an already used cotton ball.")]
     public int reusedCottonBallPenalty = 5;
+
+    [Tooltip("Penalty for pouring water outside the perineal wash zone onto thighs/legs/abdomen in Step 2.")]
+    public int wrongWashingAreaPenalty = 5;
 
     [Header("Step 6: Sterile Draping Penalties")]
     [Tooltip("Penalty for attempting to place linen with only 1 hand (violating 2-handed unfold technique).")]
@@ -122,6 +128,8 @@ public class SimulationScoringRubricSO : ScriptableObject
                 return contaminatedDropPenalty;
             case ClinicalViolationType.Forceps_Transfer_Error:
                 return 0; // logged to the Decision Matrix only
+            case ClinicalViolationType.Wrong_Washing_Area:
+                return wrongWashingAreaPenalty;
             default:
                 return 5;
         }

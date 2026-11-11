@@ -2,10 +2,13 @@ using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
-/// Manages the 9-ball perineal scrub/paint technique in sequence (Strokes 1 through 9).
-/// Enforces 1 cotton per stroke, automatic advancement, pure 3D slider line-segment touch/progress tracking,
-/// bidirectional support for Stroke 2 (Mons Pubis), strict top-to-bottom directional checking for Strokes 1 & 3-8,
-/// instant tap for Stroke 9 (Anus), and immediate guide-to-puddle replacement upon stroke completion.
+/// Manages the 9-ball perineal scrub/paint technique using a Clean-to-Dirty stage sequence:
+/// Stage 0: Right Labia Majora (fixed 1st)
+/// Stage 1: Mons Pubis (fixed 2nd, bidirectional with true endpoint-to-endpoint drag validation)
+/// Stage 2: Left Labia Majora OR Right Labia Minora (paired, both required)
+/// Stage 3: Right Inner Thigh OR Left Inner Thigh (paired, both required)
+/// Stage 4: Left Buttock OR Right Buttock (paired, both required)
+/// Stage 5: Anus (fixed final, tap-only)
 /// </summary>
 public class StrokeTrackingManager : MonoBehaviour
 {
@@ -15,13 +18,19 @@ public class StrokeTrackingManager : MonoBehaviour
     [Tooltip("All 9 zone definitions listed in clinical order.")]
     public List<StrokeZoneDefinition> allZonesInOrder = new List<StrokeZoneDefinition>();
 
+    [Header("Rule-Based Knowledge Base")]
+    [Tooltip("Optional ScriptableObject rule configuration. Uses thesis Clean-to-Dirty defaults if unassigned.")]
+    public PerinealCareRuleSetSO ruleSet;
+
     [Header("Scene Stroke Sliders")]
     public StrokeSliderTrack[] sliderTracks = new StrokeSliderTrack[9];
 
     [Header("State")]
     public int currentStrokeIndex = 0;
+    public int currentStageIndex = 0;
     public AntisepticType currentPhaseAntiseptic = AntisepticType.Iodine_7_5_Scrub;
     private readonly HashSet<int> completedIndices = new HashSet<int>();
+    private readonly List<int> reusableValidZones = new List<int>(2);
 
     [Header("Stroke Tuning")]
     [Tooltip("Required progress percentage along the stroke slider to complete (0.85 = 85%).")]
@@ -42,28 +51,50 @@ public class StrokeTrackingManager : MonoBehaviour
 
     public bool IsMistakeLockoutActive => (Time.time - lastMistakeTriggerTime) < mistakeLockoutDuration;
 
+    private PerinealRuleEngine ruleEngine;
     private float currentStrokeProgress = 0f;
     private bool isCurrentStrokeReverse = false;
+    private int activeAttemptZoneIndex = -1;
+    private bool hasActiveEntry = false;
+    private float entryRawT = 0f;
+    private bool passedMidpoint = false;
     private int activeStrokeMistakeCount = 0;
     private Vector3 lastTouchPos = Vector3.zero;
     private float lastMistakeTriggerTime = -99f;
     private float lastUsedCottonWarningTime = -99f;
     private float lastPickupForcepsStrokeTime = -99f;
     private float lastActiveTouchTime = -99f;
+    private int lastCompletedZoneIndex = -1;
+    private float lastCompletedTime = -99f;
 
     public event System.Action<int, StrokeZoneDefinition> OnStrokeAdvanced;
     public event System.Action<string, bool> OnStrokeValidated;
     public event System.Action<int> OnMistakeZoneTriggered;
     public event System.Action<int, float, Vector3> OnStrokeProgressUpdated; // (zoneIndex, progress 0-1, handleWorldPos)
+    public event System.Action<RuleEvaluationResult> OnRuleEvaluated;
+
+    public PerinealRuleEngine RuleEngine
+    {
+        get
+        {
+            if (ruleEngine == null)
+            {
+                EnsureRuleEngine();
+            }
+            return ruleEngine;
+        }
+    }
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
+        EnsureRuleEngine();
         CacheSliderTracks();
     }
 
     private void Start()
     {
+        EnsureRuleEngine();
         if (sliderTracks == null || sliderTracks.Length == 0 || sliderTracks[0] == null)
         {
             CacheSliderTracks();
@@ -72,10 +103,17 @@ public class StrokeTrackingManager : MonoBehaviour
 
     private void OnEnable()
     {
+        EnsureRuleEngine();
         if (sliderTracks == null || sliderTracks.Length == 0 || sliderTracks[0] == null)
         {
             CacheSliderTracks();
         }
+    }
+
+    public void EnsureRuleEngine()
+    {
+        PerinealRuleConfig config = ruleSet != null ? ruleSet.ToConfig() : PerinealRuleConfig.CreateDefault();
+        ruleEngine = new PerinealRuleEngine(config);
     }
 
     public void CacheSliderTracks()
@@ -98,16 +136,19 @@ public class StrokeTrackingManager : MonoBehaviour
 
     public void ResetForPhase(AntisepticType phaseAntiseptic)
     {
+        EnsureRuleEngine();
         currentPhaseAntiseptic = phaseAntiseptic;
-        currentStrokeIndex = 0;
         completedIndices.Clear();
-        currentStrokeProgress = 0f;
-        isCurrentStrokeReverse = false;
+        currentStageIndex = RuleEngine.ResolveStageIndex(completedIndices);
+        currentStrokeIndex = RuleEngine.GetRepresentativeZoneIndex(currentStageIndex, completedIndices, 9);
+
+        ResetActiveDragState();
         activeStrokeMistakeCount = 0;
-        lastTouchPos = Vector3.zero;
         lastMistakeTriggerTime = -99f;
         lastUsedCottonWarningTime = -99f;
-        lastActiveTouchTime = -99f;
+        lastPickupForcepsStrokeTime = -99f;
+        lastCompletedZoneIndex = -1;
+        lastCompletedTime = -99f;
 
         CacheSliderTracks();
 
@@ -126,19 +167,29 @@ public class StrokeTrackingManager : MonoBehaviour
             }
         }
 
-        Debug.Log($"[StrokeTrackingManager] Phase Reset: {phaseAntiseptic} | Starting Stroke 1 of 9.");
+        Debug.Log($"[StrokeTrackingManager] Phase Reset: {phaseAntiseptic} | Starting Stage 1 (Right Labia Majora).");
 
         var activeDef = GetCurrentActiveZone();
         OnStrokeAdvanced?.Invoke(currentStrokeIndex, activeDef);
     }
 
-    public StrokeZoneDefinition GetCurrentActiveZone()
+    public StrokeZoneDefinition GetZoneDefinition(int zoneIndex)
     {
-        if (allZonesInOrder != null && currentStrokeIndex >= 0 && currentStrokeIndex < allZonesInOrder.Count)
+        if (allZonesInOrder != null && zoneIndex >= 0 && zoneIndex < allZonesInOrder.Count)
         {
-            return allZonesInOrder[currentStrokeIndex];
+            return allZonesInOrder[zoneIndex];
         }
         return null;
+    }
+
+    public StrokeZoneDefinition GetCurrentActiveZone()
+    {
+        if (activeAttemptZoneIndex >= 0 && !completedIndices.Contains(activeAttemptZoneIndex))
+        {
+            var attemptDef = GetZoneDefinition(activeAttemptZoneIndex);
+            if (attemptDef != null) return attemptDef;
+        }
+        return GetZoneDefinition(currentStrokeIndex);
     }
 
     public int GetCurrentStrokeIndex()
@@ -146,9 +197,29 @@ public class StrokeTrackingManager : MonoBehaviour
         return currentStrokeIndex;
     }
 
+    public int GetCurrentStageIndex()
+    {
+        return currentStageIndex;
+    }
+
+    public int GetActiveAttemptZoneIndex()
+    {
+        return activeAttemptZoneIndex;
+    }
+
+    public int GetCompletedStrokeCount()
+    {
+        return completedIndices.Count;
+    }
+
     public int GetActiveStrokeMistakeCount()
     {
         return activeStrokeMistakeCount;
+    }
+
+    public int GetMistakesRequiredForHint()
+    {
+        return RuleEngine.Config.mistakesRequiredForHint;
     }
 
     public float GetCurrentStrokeProgress()
@@ -158,7 +229,35 @@ public class StrokeTrackingManager : MonoBehaviour
 
     public bool IsStrokeCompleted(int index)
     {
-        return completedIndices.Contains(index) || index < currentStrokeIndex;
+        return completedIndices.Contains(index);
+    }
+
+    public bool IsStrokeValidNow(int zoneIndex)
+    {
+        return RuleEngine.IsZoneValidInStage(zoneIndex, currentStageIndex, completedIndices);
+    }
+
+    public void GetValidStrokeIndicesForCurrentStage(List<int> results)
+    {
+        RuleEngine.GetValidZonesForStage(currentStageIndex, completedIndices, results);
+    }
+
+    public string GetValidChoicesSummary()
+    {
+        RuleEngine.GetValidZonesForStage(currentStageIndex, completedIndices, reusableValidZones);
+        if (reusableValidZones.Count == 0) return "Procedure Complete";
+        if (reusableValidZones.Count == 1) return GetDisplayZoneName(reusableValidZones[0]);
+        return $"{GetDisplayZoneName(reusableValidZones[0])} or {GetDisplayZoneName(reusableValidZones[1])}";
+    }
+
+    private string GetDisplayZoneName(int zoneIndex)
+    {
+        var def = GetZoneDefinition(zoneIndex);
+        if (def != null && !string.IsNullOrEmpty(def.zoneName))
+        {
+            return def.zoneName;
+        }
+        return RuleEngine.Config.GetZoneConfig(zoneIndex).zoneName;
     }
 
     /// <summary>
@@ -181,25 +280,13 @@ public class StrokeTrackingManager : MonoBehaviour
 
     private void Update()
     {
-        // Abandonment check: if a stroke was started (> 1% progress) but player stopped touching for > strokeAbandonmentTimeout (1.0s), smoothly reset to 0%
-        if (currentStrokeProgress > 0.01f && currentStrokeIndex < 9)
+        // Abandonment check: if a stroke was started (> 1% progress) but player stopped touching for > strokeAbandonmentTimeout (1.0s), reset to 0%
+        if (currentStrokeProgress > 0.01f && completedIndices.Count < 9 && activeAttemptZoneIndex >= 0)
         {
             if (Time.time - lastActiveTouchTime > strokeAbandonmentTimeout)
             {
-                currentStrokeProgress = 0f;
-                isCurrentStrokeReverse = false;
-                lastTouchPos = Vector3.zero;
-                GetZoneEndpoints(currentStrokeIndex, out Vector3 startPt, out _);
-                OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 0f, startPt);
-
-                if (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
-                {
-                    var activeTrack = sliderTracks[currentStrokeIndex];
-                    if (activeTrack != null)
-                    {
-                        activeTrack.ResetProgress();
-                    }
-                }
+                int abandonedZone = activeAttemptZoneIndex;
+                ResetActiveDragStateAndNotify(abandonedZone);
             }
         }
 
@@ -223,35 +310,61 @@ public class StrokeTrackingManager : MonoBehaviour
 
     /// <summary>
     /// Identifies which zone index (0 to 8) a touch point belongs to using pure 3D slider line-segment math.
-    /// Finds the closest zone slider to the cotton ball. If within sliderTouchRadius, returns that zone index.
+    /// Preserves stickiness on an active in-progress swipe and prefers incomplete zones over already-completed puddles.
     /// </summary>
     public int GetZoneIndexForPoint(Vector3 worldPoint)
     {
         if (sliderTracks == null || sliderTracks.Length == 0) CacheSliderTracks();
+        if (sliderTracks == null || sliderTracks.Length == 0) return -1;
 
-        int bestIndex = -1;
-        float bestDistSq = float.MaxValue;
-        float maxRadius = sliderTouchRadius; // 4.5cm
+        // Stick to an in-progress active zone while the cotton stays within its corridor so overlapping zones don't flicker mid-drag
+        if (activeAttemptZoneIndex >= 0 && hasActiveEntry && !completedIndices.Contains(activeAttemptZoneIndex)
+            && activeAttemptZoneIndex < sliderTracks.Length && sliderTracks[activeAttemptZoneIndex] != null)
+        {
+            var activeTrack = sliderTracks[activeAttemptZoneIndex];
+            float activeRadius = (activeTrack.isTapOnly ? tapTouchRadius : sliderTouchRadius) + 0.01f;
+            float activeDistSq = GetDistanceSqToTrack(worldPoint, activeTrack, out float activeT);
+            if (activeDistSq <= activeRadius * activeRadius && (activeTrack.isTapOnly || (activeT >= -0.20f && activeT <= 1.20f)))
+            {
+                return activeAttemptZoneIndex;
+            }
+        }
+
+        int bestIncompleteIndex = -1;
+        float bestIncompleteDistSq = float.MaxValue;
+        int bestCompletedIndex = -1;
+        float bestCompletedDistSq = float.MaxValue;
 
         for (int i = 0; i < sliderTracks.Length; i++)
         {
             var track = sliderTracks[i];
             if (track == null) continue;
 
-            float radius = track.isTapOnly ? tapTouchRadius : maxRadius;
+            float radius = track.isTapOnly ? tapTouchRadius : sliderTouchRadius;
             float distSq = GetDistanceSqToTrack(worldPoint, track, out float t);
 
             if (distSq <= radius * radius && (track.isTapOnly || (t >= -0.20f && t <= 1.20f)))
             {
-                if (distSq < bestDistSq)
+                if (completedIndices.Contains(i))
                 {
-                    bestDistSq = distSq;
-                    bestIndex = i;
+                    if (distSq < bestCompletedDistSq)
+                    {
+                        bestCompletedDistSq = distSq;
+                        bestCompletedIndex = i;
+                    }
+                }
+                else
+                {
+                    if (distSq < bestIncompleteDistSq)
+                    {
+                        bestIncompleteDistSq = distSq;
+                        bestIncompleteIndex = i;
+                    }
                 }
             }
         }
 
-        return bestIndex;
+        return bestIncompleteIndex >= 0 ? bestIncompleteIndex : bestCompletedIndex;
     }
 
     private float GetDistanceSqToTrack(Vector3 worldPoint, StrokeSliderTrack track, out float t)
@@ -294,29 +407,16 @@ public class StrokeTrackingManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Core logic for handling a cotton ball touching a stroke zone with real-time 1D slider tracking.
-    /// - For Stroke 2 (Mons Pubis / isBidirectional): Allows initiation from EITHER StartPoint or EndPoint with 0 error.
-    /// - For Strokes 1, 3, 4, 5, 6, 7, 8: Strictly requires starting at StartPoint (top) and wiping to EndPoint (bottom).
-    /// - For Stroke 9 (Anus): Instant tap contact validation.
+    /// Evaluates a cotton ball contact against the formal PerinealRuleEngine production rules.
+    /// - Enforces single-use cotton, forceps advisory, Clean-to-Dirty paired stage precedence,
+    ///   endpoint-to-endpoint continuous drag validation for bidirectional Mons Pubis,
+    ///   strict anterior-to-posterior direction on unidirectional zones, and tap completion for Anus.
     /// </summary>
     public void ProcessCottonTouch(CottonState cotton, int touchedZoneIndex, Vector3 touchPos)
     {
         if (cotton == null) return;
         if (touchedZoneIndex < 0 || touchedZoneIndex >= 9) return;
-
-        // MISTAKE LOCKOUT: Block all stroke interactions, swipe progression, and completion while the red error animation is playing!
-        if (IsMistakeLockoutActive)
-        {
-            return;
-        }
-
-        // Decision Matrix only: strokes must be done with the Handling forceps, never the Pickup (transfer) forceps.
-        if (cotton.currentHolder == ForcepsRole.Pickup && Time.time - lastPickupForcepsStrokeTime > 1.5f)
-        {
-            lastPickupForcepsStrokeTime = Time.time;
-            EvaluationLogger.Instance.LogMatrixOnlyViolation(ClinicalViolationType.Forceps_Transfer_Error,
-                "Stroke attempted with Pickup forceps", $"Zone {touchedZoneIndex + 1}");
-        }
+        if (IsMistakeLockoutActive) return;
 
         // Auto-soak fail-safe if cotton is not soaked
         if (!cotton.isSoaked)
@@ -325,192 +425,195 @@ public class StrokeTrackingManager : MonoBehaviour
             cotton.antisepticType = currentPhaseAntiseptic;
         }
 
-        // 1 COTTON PER STROKE RULE: If cotton was already used on a prior stroke, warn player
-        if (cotton.isUsed)
+        GetZoneEndpoints(touchedZoneIndex, out Vector3 startPoint, out Vector3 endPoint);
+        Vector3 strokeVec = endPoint - startPoint;
+        float lenSq = strokeVec.sqrMagnitude;
+        bool degenerateTrack = lenSq < 0.0001f;
+
+        float rawT = degenerateTrack ? 0f : Vector3.Dot(touchPos - startPoint, strokeVec) / lenSq;
+        float clampedT = Mathf.Clamp01(rawT);
+        float effectiveT = isCurrentStrokeReverse ? (1.0f - clampedT) : clampedT;
+        float dt = Time.deltaTime > 0f ? Time.deltaTime : 0.016f;
+        float nextMovedProgress = (activeAttemptZoneIndex == touchedZoneIndex && hasActiveEntry && effectiveT > currentStrokeProgress)
+            ? Mathf.MoveTowards(currentStrokeProgress, effectiveT, dt * 3.5f)
+            : currentStrokeProgress;
+
+        float contactGap = hasActiveEntry && activeAttemptZoneIndex == touchedZoneIndex
+            ? Mathf.Max(0f, Time.time - lastActiveTouchTime)
+            : 0f;
+
+        var facts = new PerinealFactContext
+        {
+            isHeldByPickupForceps = cotton.currentHolder == ForcepsRole.Pickup,
+            isCottonUsed = cotton.isUsed,
+            lastCompletedZoneIndex = lastCompletedZoneIndex,
+            secondsSinceLastCompletion = Time.time - lastCompletedTime,
+            touchedZoneIndex = touchedZoneIndex,
+            degenerateTrackLength = degenerateTrack,
+            rawT = rawT,
+            clampedT = clampedT,
+            activeAttemptZoneIndex = activeAttemptZoneIndex,
+            hasActiveEntry = hasActiveEntry,
+            entryRawT = entryRawT,
+            contactGapSeconds = contactGap,
+            isReverseDirection = isCurrentStrokeReverse,
+            currentProgress = currentStrokeProgress,
+            nextProgressTowardTarget = nextMovedProgress,
+            passedMidpoint = passedMidpoint,
+            completedZones = completedIndices,
+            currentStageIndex = currentStageIndex,
+            stageMistakes = activeStrokeMistakeCount
+        };
+
+        RuleEvaluationResult result = RuleEngine.Evaluate(in facts);
+        OnRuleEvaluated?.Invoke(result);
+
+        // Decision Matrix advisory: strokes should be performed with Handling forceps, never Pickup (transfer) forceps
+        if (result.hasForcepsTransferAdvisory && Time.time - lastPickupForcepsStrokeTime > 1.5f)
+        {
+            lastPickupForcepsStrokeTime = Time.time;
+            EvaluationLogger.Instance.LogMatrixOnlyViolation(
+                ClinicalViolationType.Forceps_Transfer_Error,
+                "Stroke attempted with Pickup forceps",
+                $"Zone {touchedZoneIndex + 1}");
+        }
+
+        if (result.resetDragAttempt && activeAttemptZoneIndex >= 0 && activeAttemptZoneIndex != touchedZoneIndex)
+        {
+            ResetActiveDragStateAndNotify(activeAttemptZoneIndex);
+        }
+
+        switch (result.decision)
+        {
+            case PerinealRuleDecision.IgnoreAlreadyCompleted:
+                return;
+
+            case PerinealRuleDecision.RejectViolation:
+                HandleRuleViolation(cotton, touchPos, touchedZoneIndex, result);
+                return;
+
+            case PerinealRuleDecision.AwaitStart:
+                if (result.resetDragAttempt)
+                {
+                    ResetActiveDragStateAndNotify(touchedZoneIndex);
+                }
+                lastActiveTouchTime = Time.time;
+                lastTouchPos = touchPos;
+                return;
+
+            case PerinealRuleDecision.AdvanceProgress:
+                ApplyProgressUpdate(touchedZoneIndex, startPoint, endPoint, result);
+                lastActiveTouchTime = Time.time;
+                lastTouchPos = touchPos;
+                return;
+
+            case PerinealRuleDecision.CompleteStroke:
+                Vector3 completionPos = degenerateTrack ? touchPos : (result.resolvedReverseDirection ? startPoint : endPoint);
+                OnStrokeProgressUpdated?.Invoke(touchedZoneIndex, 1.0f, completionPos);
+                CompleteCurrentStroke(cotton, touchedZoneIndex);
+                return;
+        }
+    }
+
+    private void ApplyProgressUpdate(int zoneIndex, Vector3 startPoint, Vector3 endPoint, in RuleEvaluationResult result)
+    {
+        if (activeAttemptZoneIndex >= 0 && activeAttemptZoneIndex != zoneIndex)
+        {
+            ResetActiveDragStateAndNotify(activeAttemptZoneIndex);
+        }
+
+        activeAttemptZoneIndex = zoneIndex;
+        hasActiveEntry = true;
+        entryRawT = result.resolvedEntryRawT;
+        passedMidpoint = result.updatedPassedMidpoint;
+        isCurrentStrokeReverse = result.resolvedReverseDirection;
+        currentStrokeProgress = result.updatedProgress;
+        currentStrokeIndex = zoneIndex;
+
+        StrokeSliderTrack track = GetTrack(zoneIndex);
+        if (track != null)
+        {
+            track.SetReverseFill(isCurrentStrokeReverse);
+        }
+
+        Vector3 effectiveStart = isCurrentStrokeReverse ? endPoint : startPoint;
+        Vector3 effectiveEnd = isCurrentStrokeReverse ? startPoint : endPoint;
+        Vector3 handlePos = Vector3.Lerp(effectiveStart, effectiveEnd, currentStrokeProgress);
+        OnStrokeProgressUpdated?.Invoke(zoneIndex, currentStrokeProgress, handlePos);
+    }
+
+    private void HandleRuleViolation(CottonState cotton, Vector3 touchPos, int touchedZoneIndex, in RuleEvaluationResult result)
+    {
+        if (result.violation == PerinealRuleViolation.ReusedCottonBall)
         {
             if (Time.time - lastUsedCottonWarningTime > 1.5f)
             {
                 lastUsedCottonWarningTime = Time.time;
-                OnStrokeValidated?.Invoke("Cotton already used! Take a fresh cotton ball from the tray.", false);
-                Debug.LogWarning("[StrokeTrackingManager] Player attempted to stroke with an already used cotton ball.");
-                EvaluationLogger.Instance.LogMatrixOnlyViolation(ClinicalViolationType.Reused_Cotton_Ball,
-                    "Stroke attempted with used cotton", $"Zone {touchedZoneIndex + 1}");
-            }
-            return;
-        }
+                OnStrokeValidated?.Invoke(result.userFeedback, false);
+                Debug.LogWarning($"[StrokeTrackingManager] [{result.ruleId}] {result.clinicalRationale}");
 
-        // =========================================================================
-        // ACTIVE ZONE TOUCH: Progress and complete active stroke
-        // =========================================================================
-        if (touchedZoneIndex == currentStrokeIndex)
-        {
-            if (completedIndices.Contains(currentStrokeIndex)) return;
-
-            lastActiveTouchTime = Time.time;
-
-            // ---------------------------------------------------------------------
-            // Stroke 9: Anus (Instant Tap / Contact Validation on Anus Target)
-            // ---------------------------------------------------------------------
-            if (currentStrokeIndex == 8)
-            {
-                OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, touchPos);
-                CompleteCurrentStroke(cotton);
-                return;
-            }
-
-            // ---------------------------------------------------------------------
-            // Strokes 1 to 8: 1D Real-Time Slider Tracking
-            // ---------------------------------------------------------------------
-            GetZoneEndpoints(currentStrokeIndex, out Vector3 startPoint, out Vector3 endPoint);
-            Vector3 strokeVec = endPoint - startPoint;
-            float lenSq = strokeVec.sqrMagnitude;
-
-            if (lenSq < 0.0001f)
-            {
-                OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, touchPos);
-                CompleteCurrentStroke(cotton);
-                return;
-            }
-
-            StrokeSliderTrack activeTrack = (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
-                ? sliderTracks[currentStrokeIndex]
-                : null;
-            bool isBidirectional = (activeTrack != null && activeTrack.isBidirectional) || (currentStrokeIndex == 1);
-
-            // Project touch position onto stroke vector (0 = StartPoint, 1 = EndPoint)
-            float rawT = Vector3.Dot(touchPos - startPoint, strokeVec) / lenSq;
-            float clampedT = Mathf.Clamp01(rawT);
-
-            // 1. Fresh Stroke Initiation:
-            if (currentStrokeProgress <= 0.01f)
-            {
-                if (isBidirectional)
+                if (VRDemoGameManager.Instance != null)
                 {
-                    // Bidirectional (StrokeSlider_2_Mons_Pubis): Accept start from EITHER StartPoint or EndPoint with zero error!
-                    if (rawT <= 0.38f)
-                    {
-                        isCurrentStrokeReverse = false;
-                        if (activeTrack != null) activeTrack.SetReverseFill(false);
-                        currentStrokeProgress = Mathf.Max(0.05f, clampedT);
-                        Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
-                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
-                    }
-                    else if (rawT >= 0.62f)
-                    {
-                        isCurrentStrokeReverse = true;
-                        if (activeTrack != null) activeTrack.SetReverseFill(true);
-                        float revT = 1.0f - clampedT;
-                        currentStrokeProgress = Mathf.Max(0.05f, revT);
-                        Vector3 handlePos = Vector3.Lerp(endPoint, startPoint, currentStrokeProgress);
-                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
-                    }
+                    int cottonId = cotton != null ? cotton.GetInstanceID() : GetInstanceID();
+                    VRDemoGameManager.Instance.RecordCottonBallMistake(
+                        cottonId,
+                        ClinicalViolationType.Reused_Cotton_Ball,
+                        "Reused spent cotton ball",
+                        result.userFeedback,
+                        $"Zone {touchedZoneIndex + 1}");
                 }
                 else
                 {
-                    // Strict Top-to-Bottom Directional Strokes (Strokes 1, 3, 4, 5, 6, 7, 8):
-                    // Player touches near Start Point / Top section (t <= 0.35) -> Initialize downward wipe!
-                    if (rawT <= 0.35f)
-                    {
-                        isCurrentStrokeReverse = false;
-                        if (activeTrack != null) activeTrack.SetReverseFill(false);
-                        currentStrokeProgress = Mathf.Max(0.05f, clampedT);
-                        Vector3 handlePos = Vector3.Lerp(startPoint, endPoint, currentStrokeProgress);
-                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
-                    }
-                    // If player touches near End Point / Bottom (t >= 0.55) before starting at top -> Wrong direction attempt!
-                    else if (rawT >= 0.55f)
-                    {
-                        HandleMistakeTouch(touchPos, currentStrokeIndex, "Incorrect technique! Start at the top and wipe downward.");
-                    }
+                    EvaluationLogger.Instance.LogMatrixOnlyViolation(
+                        ClinicalViolationType.Reused_Cotton_Ball,
+                        "Stroke attempted with used cotton",
+                        $"Zone {touchedZoneIndex + 1}");
+                }
+
+                if (VRHeadsetVisualFeedback.Instance != null)
+                {
+                    VRHeadsetVisualFeedback.Instance.PlayFeedbackCuesOnly(0.55f, 0.25f);
                 }
             }
-            // 2. Stroke In Progress:
-            else
-            {
-                float effectiveT = isCurrentStrokeReverse ? (1.0f - clampedT) : clampedT;
-                Vector3 effectiveStart = isCurrentStrokeReverse ? endPoint : startPoint;
-                Vector3 effectiveEnd = isCurrentStrokeReverse ? startPoint : endPoint;
-
-                // Advancing towards target opposite endpoint
-                if (effectiveT > currentStrokeProgress)
-                {
-                    currentStrokeProgress = Mathf.MoveTowards(currentStrokeProgress, effectiveT, Time.deltaTime * 1.2f);
-                    Vector3 handlePos = Vector3.Lerp(effectiveStart, effectiveEnd, currentStrokeProgress);
-                    OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
-
-                    // Validate completion if opposite endpoint threshold reached
-                    if (currentStrokeProgress >= requiredProgressThreshold)
-                    {
-                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 1.0f, effectiveEnd);
-                        CompleteCurrentStroke(cotton);
-                        return;
-                    }
-                }
-                else if (isBidirectional)
-                {
-                    // For Mons Pubis, if the player switches ends early in the stroke, seamlessly flip direction without triggering any mistake!
-                    if (currentStrokeProgress < 0.40f && effectiveT < 0.25f)
-                    {
-                        isCurrentStrokeReverse = !isCurrentStrokeReverse;
-                        if (activeTrack != null) activeTrack.SetReverseFill(isCurrentStrokeReverse);
-                        float flippedT = 1.0f - effectiveT;
-                        currentStrokeProgress = Mathf.Max(0.05f, flippedT);
-                        Vector3 newStart = isCurrentStrokeReverse ? endPoint : startPoint;
-                        Vector3 newEnd = isCurrentStrokeReverse ? startPoint : endPoint;
-                        Vector3 handlePos = Vector3.Lerp(newStart, newEnd, currentStrokeProgress);
-                        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, currentStrokeProgress, handlePos);
-                    }
-                }
-                // Reverse upward wiping check for strict unidirectional strokes
-                else if (effectiveT < currentStrokeProgress - 0.28f)
-                {
-                    HandleMistakeTouch(touchPos, currentStrokeIndex, "Wipe downward from top to bottom only!");
-                }
-            }
-
-            lastTouchPos = touchPos;
+            return;
         }
-        // =========================================================================
-        // WRONG / OUT-OF-ORDER ZONE TOUCH: Flash Red Error
-        // =========================================================================
-        else
-        {
-            // If the touched zone is ALREADY COMPLETED, ignore it completely (no mistake alert or red pulse)
-            if (completedIndices.Contains(touchedZoneIndex) || touchedZoneIndex < currentStrokeIndex)
-            {
-                return;
-            }
 
-            HandleMistakeTouch(touchPos, touchedZoneIndex, "Out of order! Take the correct anatomical stroke in sequence.");
+        ClinicalViolationType mappedViolation = MapViolationType(result.violation);
+        HandleMistakeTouch(touchPos, touchedZoneIndex, result.userFeedback, mappedViolation, result.ruleId);
+    }
+
+    private static ClinicalViolationType MapViolationType(PerinealRuleViolation violation)
+    {
+        switch (violation)
+        {
+            case PerinealRuleViolation.ForcepsTransferError:
+                return ClinicalViolationType.Forceps_Transfer_Error;
+            case PerinealRuleViolation.ReusedCottonBall:
+                return ClinicalViolationType.Reused_Cotton_Ball;
+            case PerinealRuleViolation.ReverseWipeDirection:
+            case PerinealRuleViolation.WrongStartCorridor:
+                return ClinicalViolationType.Reverse_Wipe_Direction;
+            default:
+                return ClinicalViolationType.Out_Of_Order_Stroke;
         }
     }
 
-    public void HandleMistakeTouch(Vector3 touchPos, int mistakeZoneIndex, string reason = "Stroke out of order!")
+    public void HandleMistakeTouch(
+        Vector3 touchPos,
+        int mistakeZoneIndex,
+        string reason = "Stroke out of order!",
+        ClinicalViolationType violationType = ClinicalViolationType.Out_Of_Order_Stroke,
+        string ruleId = "R4_STAGE_SEQUENCE")
     {
-        // Never trigger mistake on completed zones
-        if (completedIndices.Contains(mistakeZoneIndex) || mistakeZoneIndex < currentStrokeIndex)
+        if (completedIndices.Contains(mistakeZoneIndex))
         {
             return;
         }
 
-        // Lock out all interactions for the duration of the red animation
         lastMistakeTriggerTime = Time.time;
-        lastTouchPos = Vector3.zero;
-        currentStrokeProgress = 0f;
-        isCurrentStrokeReverse = false;
+        int resetZone = activeAttemptZoneIndex >= 0 ? activeAttemptZoneIndex : currentStrokeIndex;
+        ResetActiveDragStateAndNotify(resetZone);
         activeStrokeMistakeCount++;
-
-        // Immediately reset any visual fill/bead progress on active slider
-        if (sliderTracks != null && currentStrokeIndex >= 0 && currentStrokeIndex < sliderTracks.Length)
-        {
-            var activeTrack = sliderTracks[currentStrokeIndex];
-            if (activeTrack != null)
-            {
-                activeTrack.ResetProgress();
-            }
-        }
-        GetZoneEndpoints(currentStrokeIndex, out Vector3 startPt, out _);
-        OnStrokeProgressUpdated?.Invoke(currentStrokeIndex, 0f, startPt);
 
         if (mistakeZoneIndex >= 0)
         {
@@ -519,49 +622,51 @@ public class StrokeTrackingManager : MonoBehaviour
 
         if (VRHeadsetVisualFeedback.Instance != null)
         {
-            VRHeadsetVisualFeedback.Instance.TriggerMistakeFlash(1.2f);
+            if (PerinealCareManager.Instance != null && VRDemoGameManager.Instance != null)
+                VRHeadsetVisualFeedback.Instance.PlayFeedbackCuesOnly(0.55f, 0.28f);
+            else
+                VRHeadsetVisualFeedback.Instance.TriggerMistakeFlash(1.2f);
         }
+
+        Debug.LogWarning($"[StrokeTrackingManager] [{ruleId}] {reason}");
 
         if (PerinealCareManager.Instance != null)
         {
-            PerinealCareManager.Instance.RecordClinicalViolation(reason, 5);
+            PerinealCareManager.Instance.RecordClinicalViolation(violationType, reason, 5);
         }
 
         OnStrokeValidated?.Invoke(reason, false);
     }
 
-    private void CompleteCurrentStroke(CottonState cotton)
+    private void CompleteCurrentStroke(CottonState cotton, int finishedIndex)
     {
-        if (completedIndices.Contains(currentStrokeIndex)) return;
+        if (finishedIndex < 0 || finishedIndex >= 9 || completedIndices.Contains(finishedIndex)) return;
 
-        int finishedIndex = currentStrokeIndex;
         completedIndices.Add(finishedIndex);
-        var completedDef = GetCurrentActiveZone();
-        string zoneName = completedDef != null ? completedDef.zoneName : $"Stroke {finishedIndex + 1}";
+        lastCompletedZoneIndex = finishedIndex;
+        lastCompletedTime = Time.time;
 
-        Debug.Log($"[StrokeTrackingManager] Stroke {finishedIndex + 1}/9 Completed: {zoneName}");
+        string zoneName = GetDisplayZoneName(finishedIndex);
+        Debug.Log($"[StrokeTrackingManager] Stroke Completed ({completedIndices.Count}/9): Zone {finishedIndex + 1} - {zoneName}");
         OnStrokeValidated?.Invoke($"{zoneName} Completed!", true);
         EvaluationLogger.Instance.LogCorrect($"Stroke {finishedIndex + 1} completed", MatrixCriterion.Technique, zoneName);
 
-        // Immediately hide the completed stroke's visual guide and replace it with the Betadine puddle on the skin!
-        if (sliderTracks != null && finishedIndex >= 0 && finishedIndex < sliderTracks.Length)
+        // Immediately hide the completed stroke's visual guide and replace it with the Betadine puddle on the skin
+        var track = GetTrack(finishedIndex);
+        if (track != null)
         {
-            var track = sliderTracks[finishedIndex];
-            if (track != null)
-            {
-                track.ResetProgress();
-                track.SetVisualElementsVisible(false);
+            track.ResetProgress();
+            track.SetVisualElementsVisible(false);
 
-                if (track.puddleLayer != null)
+            if (track.puddleLayer != null)
+            {
+                if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
                 {
-                    if (currentPhaseAntiseptic == AntisepticType.Iodine_7_5_Scrub)
-                    {
-                        track.puddleLayer.Apply7_5Puddle();
-                    }
-                    else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
-                    {
-                        track.puddleLayer.Apply10Coating();
-                    }
+                    track.puddleLayer.Apply7_5Puddle();
+                }
+                else if (currentPhaseAntiseptic == AntisepticType.Iodine_10_Paint)
+                {
+                    track.puddleLayer.Apply10Coating();
                 }
             }
         }
@@ -572,18 +677,16 @@ public class StrokeTrackingManager : MonoBehaviour
             cotton.isUsed = true;
         }
 
-        // Advance to next stroke and reset mistake count for the new stroke
-        currentStrokeIndex++;
-        currentStrokeProgress = 0f;
-        isCurrentStrokeReverse = false;
+        ResetActiveDragState();
         activeStrokeMistakeCount = 0;
-        lastTouchPos = Vector3.zero;
+
+        currentStageIndex = RuleEngine.ResolveStageIndex(completedIndices);
+        currentStrokeIndex = RuleEngine.GetRepresentativeZoneIndex(currentStageIndex, completedIndices, 9);
 
         var nextDef = GetCurrentActiveZone();
         OnStrokeAdvanced?.Invoke(currentStrokeIndex, nextDef);
 
-        // Check if all 9 strokes finished
-        if (currentStrokeIndex >= 9)
+        if (completedIndices.Count >= 9 || currentStageIndex >= RuleEngine.StageCount)
         {
             Debug.Log("[StrokeTrackingManager] All 9 Perineal Strokes Completed Successfully!");
 
@@ -598,6 +701,42 @@ public class StrokeTrackingManager : MonoBehaviour
                     PerinealCareManager.Instance.On10PaintCompleted();
                 }
             }
+        }
+    }
+
+    private StrokeSliderTrack GetTrack(int zoneIndex)
+    {
+        if (sliderTracks != null && zoneIndex >= 0 && zoneIndex < sliderTracks.Length)
+        {
+            return sliderTracks[zoneIndex];
+        }
+        return null;
+    }
+
+    private void ResetActiveDragState()
+    {
+        currentStrokeProgress = 0f;
+        isCurrentStrokeReverse = false;
+        activeAttemptZoneIndex = -1;
+        hasActiveEntry = false;
+        entryRawT = 0f;
+        passedMidpoint = false;
+        lastTouchPos = Vector3.zero;
+        lastActiveTouchTime = -99f;
+    }
+
+    private void ResetActiveDragStateAndNotify(int zoneToReset)
+    {
+        ResetActiveDragState();
+        if (zoneToReset >= 0 && zoneToReset < 9)
+        {
+            var track = GetTrack(zoneToReset);
+            if (track != null)
+            {
+                track.ResetProgress();
+            }
+            GetZoneEndpoints(zoneToReset, out Vector3 startPt, out _);
+            OnStrokeProgressUpdated?.Invoke(zoneToReset, 0f, startPt);
         }
     }
 }

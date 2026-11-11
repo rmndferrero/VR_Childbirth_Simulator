@@ -1,20 +1,22 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Controls the modular 4-page paginated SummaryScreen GameObject at Step 8.
-/// Allows students and clinical preceptors to navigate between:
-/// - Page 1: Dialogue & Clinical Communication Competency Profile
-/// - Page 2: Perineal Cleaning & 9-Ball Technique Review
-/// - Page 3: Sterile Draping Protocol Review
-/// - Page 4: Mayo Table Setup & Recorded Score
-/// - Page 5: Decision Matrix Evaluation (parallel WSM score)
-/// Every page shows the shared EvaluationDisclaimer above the footer navigation.
-/// - Page 6+: Mistake Gallery (Severe first, 2 per page; Restart Button on the last page)
+/// Controls the redesigned Assessment Summary UI at Step 8:
+/// - Page 0: Overall Summary (mockup-aligned card layout + 4 mandatory stages + mistake ledger + clinical feedback)
+/// - Page 1: Stage 1 Details — Dialogue & Clinical Decision-Making (Selected vs Recommended + Rationale)
+/// - Page 2: Stage 2 Details — Perineal Cleaning (separated Perineal Washing & 9-Cotton-Ball cards)
+/// - Page 3: Stage 3 Details — Draping (separated Draping the Mother & Draping the Table cards)
+/// - Page 4: Stage 4 Details — Table Preparation (placements, wrong-slot attempts & dropped instruments)
+/// - Page 5: Decision Matrix Evaluation (parallel WSM score + Save / Don't Save export bar)
+/// - Page 6+: Mistake Screenshot Gallery
 /// </summary>
 public class SummaryScreenController : MonoBehaviour
 {
@@ -23,7 +25,8 @@ public class SummaryScreenController : MonoBehaviour
     [Header("Root Panel")]
     public GameObject rootScreenObject;
 
-    [Header("The 4 Page Panels")]
+    [Header("Overview & Stage Pages")]
+    public GameObject page0Overview;
     public GameObject page1Dialogue;
     public GameObject page2Perineal;
     public GameObject page3Draping;
@@ -31,6 +34,7 @@ public class SummaryScreenController : MonoBehaviour
 
     [Header("Universal Footer Navigation")]
     public Button buttonBack;
+    public Button buttonOverview;
     public TMP_Text textPageIndicator;
     public Button buttonNext;
     public Button buttonRestart;
@@ -41,7 +45,41 @@ public class SummaryScreenController : MonoBehaviour
     public string disclaimer = EvaluationDisclaimer.DefaultText;
     public TMP_Text disclaimerText;
 
-    [Header("Page 1: Communication Debrief UI Components")]
+    [Header("Page 0: Overall Summary Components")]
+    public TMP_Text ovHeroScoreText;
+    public Image ovCompetencyPillBg;
+    public TMP_Text ovCompetencyPillText;
+    public Image ovProgressFill;
+
+    [Tooltip("Exact 4 stage buttons in order: 0=Dialogue, 1=Perineal Cleaning, 2=Draping, 3=Table Preparation")]
+    public Button[] ovStageButtons = new Button[4];
+    public Image[] ovStagePillBgs = new Image[4];
+    public TMP_Text[] ovStagePillTexts = new TMP_Text[4];
+
+    [Tooltip("Exact separated Stage 2 sub-rows (Perineal Cleaning)")]
+    public TMP_Text ovPerinealWashSubText;
+    public TMP_Text ovPerinealCottonSubText;
+
+    [Tooltip("Exact separated Stage 3 sub-rows (Draping)")]
+    public TMP_Text ovDrapeMotherSubText;
+    public TMP_Text ovDrapeTableSubText;
+
+    [Header("Page 0: Mistake Breakdown Ledger")]
+    public TMP_Text ovCottonAffectedValueText;
+    public TMP_Text ovCottonDeductionValueText;
+    public GameObject[] ovToolRowObjects = new GameObject[4];
+    public TMP_Text[] ovToolRowLabelTexts = new TMP_Text[4];
+    public TMP_Text[] ovToolRowValueTexts = new TMP_Text[4];
+    public TMP_Text ovToolHandlingNoteText;
+    public TMP_Text ovToolDeductionValueText;
+    public TMP_Text ovTotalDeductionsValueText;
+
+    [Header("Page 0: Clinical Feedback & Drill-Down")]
+    public TMP_Text ovFeedbackHeadingText;
+    public TMP_Text ovFeedbackBodyText;
+    public Button buttonOverviewDrillDown;
+
+    [Header("Page 1: Dialogue & Decision-Making UI")]
     public TMP_Text p1OverallRatingText;
     public TMP_Text p1ArchetypeTitleText;
     public TMP_Text p1DebriefNotesText;
@@ -53,22 +91,27 @@ public class SummaryScreenController : MonoBehaviour
     public TMP_Text p1TextClarity;
     public TMP_Text p1CritiquesListText;
 
-    [Header("Page 2: Perineal Care UI Components")]
+    [Header("Page 2: Perineal Cleaning UI (Separated Cards)")]
     public TMP_Text p2StatusSummaryText;
     public TMP_Text p2MistakesListText;
+    public TMP_Text p2WashCardText;
+    public TMP_Text p2CottonCardText;
 
-    [Header("Page 3: Sterile Draping UI Components")]
+    [Header("Page 3: Draping UI (Separated Cards)")]
     public TMP_Text p3StatusSummaryText;
     public TMP_Text p3MistakesListText;
+    public TMP_Text p3MotherCardText;
+    public TMP_Text p3TableCardText;
 
-    [Header("Page 4: Table Setup & Final Master Score")]
+    [Header("Page 4: Table Preparation UI")]
     public TMP_Text p4FinalScoreText;
     public TMP_Text p4OverallMistakesListText;
+    public TMP_Text p4PlacementsCardText;
+    public TMP_Text p4DropsCardText;
 
     [Header("Page 5: Decision Matrix (parallel score)")]
     public GameObject page5Matrix;
     public TMP_Text p5ScoresText;
-    [Tooltip("Empty RectTransform; the step x criterion grid is built here at runtime.")]
     public RectTransform p5GridContainer;
     public Button p5SaveButton;
     public Button p5DontSaveButton;
@@ -77,7 +120,6 @@ public class SummaryScreenController : MonoBehaviour
     [Header("Page 6+: Mistake Gallery")]
     public GameObject page6Gallery;
     public TMP_Text p6HeaderText;
-    [Tooltip("One entry per card slot on a gallery page.")]
     public GameObject[] p6Cards;
     public RawImage[] p6Thumbnails;
     public TMP_Text[] p6CardTexts;
@@ -87,21 +129,77 @@ public class SummaryScreenController : MonoBehaviour
     public AudioClip pageFlipSound;
 
     private int currentPageIndex = 0;
-    private const int MatrixPageIndex = 4;
-    private const int FirstGalleryPageIndex = 5;
-    private int TotalPages => page5Matrix == null ? 4 : FirstGalleryPageIndex + GalleryPageCount;
+    private const int OverviewPageIndex = 0;
+    private const int DialoguePageIndex = 1;
+    private const int PerinealPageIndex = 2;
+    private const int DrapingPageIndex = 3;
+    private const int TablePrepPageIndex = 4;
+    private const int MatrixPageIndex = 5;
+    private const int FirstGalleryPageIndex = 6;
 
-    private static readonly string[] PageTitles = new string[5]
+    private int MinPageIndex => page0Overview != null ? OverviewPageIndex : DialoguePageIndex;
+    private int TotalPages => page5Matrix == null ? TablePrepPageIndex + 1 : FirstGalleryPageIndex + GalleryPageCount;
+
+    private static readonly string[] PageTitles = new string[6]
     {
-        "Patient Communication & Informed Consent",
-        "Perineal Cleaning & Antiseptic Scrub",
-        "Sterile Draping Protocol",
-        "Mayo Table Setup & Recorded Score",
+        "Overall Simulation Assessment",
+        "Stage 1: Dialogue & Clinical Decision-Making",
+        "Stage 2: Perineal Cleaning Review",
+        "Stage 3: Sterile Draping Review",
+        "Stage 4: Table Preparation Review",
         "Decision Matrix Evaluation"
     };
 
     private DecisionMatrixResult matrixResult;
     private readonly List<Texture2D> loadedThumbnails = new List<Texture2D>();
+    private readonly Dictionary<string, Texture2D> thumbnailCache = new Dictionary<string, Texture2D>();
+
+    // Theme Palette (Dark Navy Clinical Tablet matching simulation + reference card clarity)
+    private static readonly Color ColGreenBright = new Color(0.18f, 0.84f, 0.48f, 1f);
+    private static readonly Color ColGreenPillBg = new Color(0.06f, 0.24f, 0.16f, 0.96f);
+    private static readonly Color ColAmberBright = new Color(0.96f, 0.68f, 0.18f, 1f);
+    private static readonly Color ColAmberPillBg = new Color(0.28f, 0.18f, 0.05f, 0.96f);
+    private static readonly Color ColRedBright   = new Color(0.95f, 0.30f, 0.30f, 1f);
+    private static readonly Color ColRedPillBg   = new Color(0.28f, 0.09f, 0.10f, 0.96f);
+    private static readonly Color BarNeutral     = new Color(0.22f, 0.66f, 0.94f, 1f);
+    private static readonly Color CellNA         = new Color(0.15f, 0.20f, 0.28f, 1f);
+    private static readonly Color CellHeader     = new Color(0.08f, 0.12f, 0.18f, 0.95f);
+    private static readonly Color CellScored     = new Color(0.20f, 0.29f, 0.40f, 1f);
+
+    private static Sprite cachedRoundedSprite;
+    private static Sprite cachedBarSprite;
+
+    public static Sprite GetRoundedSprite()
+    {
+        if (cachedRoundedSprite != null) return cachedRoundedSprite;
+
+        const int sz = 32;
+        const float r = 7f;
+        var tex = new Texture2D(sz, sz, TextureFormat.RGBA32, false)
+        {
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        var pixels = new Color32[sz * sz];
+        for (int y = 0; y < sz; y++)
+        {
+            for (int x = 0; x < sz; x++)
+            {
+                float dx = x < r ? (r - x - 0.5f) : (x >= sz - r ? x - (sz - r) + 0.5f : 0f);
+                float dy = y < r ? (r - y - 0.5f) : (y >= sz - r ? y - (sz - r) + 0.5f : 0f);
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                float alpha = dist <= 0f ? 1f : Mathf.Clamp01(r + 0.5f - dist);
+                byte a = (byte)Mathf.RoundToInt(alpha * 255f);
+                pixels[y * sz + x] = new Color32(255, 255, 255, a);
+            }
+        }
+        tex.SetPixels32(pixels);
+        tex.Apply();
+        cachedRoundedSprite = Sprite.Create(tex, new Rect(0, 0, sz, sz), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(10, 10, 10, 10));
+        return cachedRoundedSprite;
+    }
+
     private int CardsPerGalleryPage => p6Cards != null && p6Cards.Length > 0 ? p6Cards.Length : 2;
     private int GalleryPageCount
     {
@@ -120,74 +218,80 @@ public class SummaryScreenController : MonoBehaviour
         EvaluationDisclaimer.Text = disclaimer;
         if (audioSource == null) audioSource = GetComponent<AudioSource>();
 
-        if (SceneManager.GetActiveScene().name == "SummaryScene" || (VRDemoGameManager.Instance == null && EvaluationReportExporter.State != EvaluationReportExporter.SaveState.None))
+        WireButtons();
+
+        EvaluationReportExporter.OnSaveStateChanged -= HandleSaveStateChanged;
+        EvaluationReportExporter.OnSaveStateChanged += HandleSaveStateChanged;
+
+        if (SceneManager.GetActiveScene().name == "SummaryScene" ||
+            (VRDemoGameManager.Instance == null && EvaluationReportExporter.State != EvaluationReportExporter.SaveState.None))
         {
             OpenSummaryScreen();
         }
+    }
 
-        if (buttonBack != null)
+    private void WireButtons()
+    {
+        BindButton(buttonBack, PreviousPage);
+        BindButton(buttonNext, NextPage);
+        BindButton(buttonOverview, () => ShowPage(OverviewPageIndex));
+        BindButton(buttonOverviewDrillDown, () => ShowPage(DialoguePageIndex));
+        BindButton(buttonRestart, RestartSimulation);
+        BindButton(buttonMainMenu, ReturnToMainMenu);
+        BindButton(p5SaveButton, SaveEvaluation);
+        BindButton(p5DontSaveButton, DontSaveEvaluation);
+
+        if (ovStageButtons != null)
         {
-            buttonBack.onClick.RemoveAllListeners();
-            buttonBack.onClick.AddListener(PreviousPage);
+            int[] targetPages = { DialoguePageIndex, PerinealPageIndex, DrapingPageIndex, TablePrepPageIndex };
+            for (int i = 0; i < ovStageButtons.Length && i < targetPages.Length; i++)
+            {
+                int pageTarget = targetPages[i];
+                BindButton(ovStageButtons[i], () => ShowPage(pageTarget));
+            }
         }
+    }
 
-        if (buttonNext != null)
-        {
-            buttonNext.onClick.RemoveAllListeners();
-            buttonNext.onClick.AddListener(NextPage);
-        }
-
-        if (buttonRestart != null)
-        {
-            buttonRestart.onClick.RemoveAllListeners();
-            buttonRestart.onClick.AddListener(RestartSimulation);
-        }
-
-        if (buttonMainMenu != null)
-        {
-            buttonMainMenu.onClick.RemoveAllListeners();
-            buttonMainMenu.onClick.AddListener(ReturnToMainMenu);
-        }
-
-        if (p5SaveButton != null)
-        {
-            p5SaveButton.onClick.RemoveAllListeners();
-            p5SaveButton.onClick.AddListener(SaveEvaluation);
-        }
-
-        if (p5DontSaveButton != null)
-        {
-            p5DontSaveButton.onClick.RemoveAllListeners();
-            p5DontSaveButton.onClick.AddListener(DontSaveEvaluation);
-        }
-
-        EvaluationReportExporter.OnSaveStateChanged += HandleSaveStateChanged;
+    private static void BindButton(Button btn, UnityEngine.Events.UnityAction action)
+    {
+        if (btn == null) return;
+        btn.onClick.RemoveAllListeners();
+        btn.onClick.AddListener(action);
     }
 
     public void OpenSummaryScreen()
     {
         if (rootScreenObject != null) rootScreenObject.SetActive(true);
+        WireButtons();
         EvaluationDisclaimer.Text = disclaimer;
         if (disclaimerText != null) disclaimerText.text = EvaluationDisclaimer.Text;
 
-        PopulatePage1_Dialogue();
+        var gm = VRDemoGameManager.Instance;
+        var rubric = gm != null ? gm.scoringRubric : VRDemoGameManager.LastRubric;
+        var debrief = gm != null ? gm.communicationDebrief : VRDemoGameManager.LastDebrief;
+        matrixResult = EvaluationLogger.Instance.Evaluate(rubric, debrief);
+
+        PopulatePage0_Overview(rubric, debrief);
+        PopulatePage1_Dialogue(debrief);
         PopulatePage2_Perineal();
         PopulatePage3_Draping();
         PopulatePage4_TableAndFinal();
-        PopulatePage5_Matrix();
+        PopulatePage5_Matrix(rubric);
 
-        ShowPage(0);
+        ShowPage(MinPageIndex);
     }
 
     public void ShowPage(int index)
     {
-        currentPageIndex = Mathf.Clamp(index, 0, TotalPages - 1);
+        currentPageIndex = Mathf.Clamp(index, MinPageIndex, TotalPages - 1);
 
-        if (page1Dialogue != null) page1Dialogue.SetActive(currentPageIndex == 0);
-        if (page2Perineal != null) page2Perineal.SetActive(currentPageIndex == 1);
-        if (page3Draping != null) page3Draping.SetActive(currentPageIndex == 2);
-        if (page4TableAndFinal != null) page4TableAndFinal.SetActive(currentPageIndex == 3);
+        if (page0Overview != null) page0Overview.SetActive(currentPageIndex == OverviewPageIndex);
+        if (page1Dialogue != null) page1Dialogue.SetActive(currentPageIndex == DialoguePageIndex);
+        if (page2Perineal != null) page2Perineal.SetActive(currentPageIndex == PerinealPageIndex);
+        if (page3Draping != null) page3Draping.SetActive(currentPageIndex == DrapingPageIndex);
+        if (page4TableAndFinal != null) page4TableAndFinal.SetActive(currentPageIndex == TablePrepPageIndex);
         if (page5Matrix != null) page5Matrix.SetActive(currentPageIndex == MatrixPageIndex);
+
         bool onGallery = page5Matrix != null && currentPageIndex >= FirstGalleryPageIndex;
         if (page6Gallery != null) page6Gallery.SetActive(onGallery);
         if (onGallery) PopulateGalleryPage(currentPageIndex - FirstGalleryPageIndex);
@@ -197,50 +301,267 @@ public class SummaryScreenController : MonoBehaviour
         {
             string title = currentPageIndex < PageTitles.Length
                 ? PageTitles[currentPageIndex]
-                : (GalleryPageCount > 1 ? $"Mistake Gallery ({currentPageIndex - FirstGalleryPageIndex + 1}/{GalleryPageCount})" : "Mistake Gallery");
-            textPageIndicator.text = $"Page {currentPageIndex + 1} of {TotalPages}: {title}";
+                : (GalleryPageCount > 1
+                    ? $"Mistake Gallery ({currentPageIndex - FirstGalleryPageIndex + 1}/{GalleryPageCount})"
+                    : "Mistake Gallery");
+            int displayIndex = currentPageIndex - MinPageIndex + 1;
+            int displayTotal = TotalPages - MinPageIndex;
+            textPageIndicator.text = $"{displayIndex} / {displayTotal}  •  {title}";
         }
 
-        if (buttonBack != null)
-        {
-            buttonBack.interactable = (currentPageIndex > 0);
-        }
-
-        if (buttonNext != null)
-        {
-            buttonNext.gameObject.SetActive(currentPageIndex < TotalPages - 1);
-        }
-
-        if (buttonRestart != null)
-        {
-            buttonRestart.gameObject.SetActive(currentPageIndex == TotalPages - 1);
-        }
+        if (buttonBack != null) buttonBack.interactable = currentPageIndex > MinPageIndex;
+        if (buttonOverview != null) buttonOverview.gameObject.SetActive(page0Overview != null && currentPageIndex != OverviewPageIndex);
+        if (buttonNext != null) buttonNext.gameObject.SetActive(currentPageIndex < TotalPages - 1);
+        if (buttonRestart != null) buttonRestart.gameObject.SetActive(currentPageIndex == TotalPages - 1);
 
         PlayPageSound();
     }
 
     public void NextPage()
     {
-        if (currentPageIndex < TotalPages - 1)
-        {
-            ShowPage(currentPageIndex + 1);
-        }
+        if (currentPageIndex < TotalPages - 1) ShowPage(currentPageIndex + 1);
     }
 
     public void PreviousPage()
     {
-        if (currentPageIndex > 0)
+        if (currentPageIndex > MinPageIndex) ShowPage(currentPageIndex - 1);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 0: OVERALL SUMMARY (Matches Uploaded Mockup & Mandatory 4-Stage Hierarchy)
+    // ═══════════════════════════════════════════════════════════════
+
+    private void PopulatePage0_Overview(SimulationScoringRubricSO rubric, CommunicationDebriefData debrief)
+    {
+        if (page0Overview == null) return;
+
+        int finalScore = GetRecordedFinalScore();
+        int totalDeductions = GetRecordedTotalDeductions(finalScore);
+        int passScore = rubric != null ? rubric.passThresholdScore : 70;
+        int honorsScore = rubric != null ? rubric.honorsThresholdScore : 85;
+
+        Color heroColor = finalScore >= honorsScore ? ColGreenBright : (finalScore >= passScore ? ColAmberBright : ColRedBright);
+        Color pillBg = finalScore >= honorsScore ? ColGreenPillBg : (finalScore >= passScore ? ColAmberPillBg : ColRedPillBg);
+        string pillText = finalScore >= honorsScore ? "Good performance" : (finalScore >= passScore ? "Passed" : "Needs improvement");
+        if (finalScore == 100) pillText = "Excellent";
+
+        if (ovHeroScoreText != null)
         {
-            ShowPage(currentPageIndex - 1);
+            ovHeroScoreText.text = $"{finalScore}<size=55%><color=#7A92AD>/100</color></size>";
+            ovHeroScoreText.color = heroColor;
+        }
+        SetPill(ovCompetencyPillBg, ovCompetencyPillText, pillText, heroColor, pillBg);
+
+        if (ovProgressFill != null)
+        {
+            EnsureFillableSprite(ovProgressFill);
+            ovProgressFill.fillAmount = Mathf.Clamp01(finalScore / 100f);
+            ovProgressFill.color = heroColor;
+        }
+
+        // Gather stage metrics
+        var events = EvaluationLogger.Instance.events ?? new List<EvaluationEvent>();
+        int wrongWashCount = CountViolations(events, ClinicalViolationType.Wrong_Washing_Area);
+        int washDeduction = SumLegacyDeductionsForTypes(events, ClinicalViolationType.Wrong_Washing_Area);
+
+        int cottonMistakes = CountViolations(events,
+            ClinicalViolationType.Out_Of_Order_Stroke,
+            ClinicalViolationType.Reverse_Wipe_Direction,
+            ClinicalViolationType.Reused_Cotton_Ball,
+            ClinicalViolationType.Contaminated_Drop_Outside_Basin,
+            ClinicalViolationType.Forceps_Transfer_Error);
+        int affectedCottons = GetAffectedCottonCount();
+        int cottonTierDeduction = GetCottonDeduction(affectedCottons);
+        int strokePenalty = SumLegacyDeductionsForTypes(events,
+            ClinicalViolationType.Out_Of_Order_Stroke,
+            ClinicalViolationType.Reverse_Wipe_Direction);
+
+        int motherDrapeMistakes = CountViolationsForStepAndDetail(events, 6, "Mayo", excludeMatch: true);
+        int tableDrapeMistakes = CountViolationsForStepAndDetail(events, 6, "Mayo", excludeMatch: false);
+
+        int tablePrepSlotMistakes = CountViolations(events, ClinicalViolationType.Incorrect_Table_Slot, ClinicalViolationType.Unsterile_Mayo_Placement_Violation);
+        int toolDrops = GetTotalToolDropCount();
+        int toolDeduction = GetToolDropDeduction(toolDrops);
+
+        bool dialogueOk = debrief == null || (debrief.compositeScore >= 80f && CountViolations(events, ClinicalViolationType.Tool_Handled_Before_Consent) == 0);
+        bool washOk = wrongWashCount == 0;
+        bool cottonOk = affectedCottons == 0 && cottonMistakes == 0;
+        bool perinealOk = washOk && cottonOk;
+        bool motherDrapeOk = motherDrapeMistakes == 0;
+        bool tableDrapeOk = tableDrapeMistakes == 0;
+        bool drapingOk = motherDrapeOk && tableDrapeOk;
+        bool tablePrepOk = tablePrepSlotMistakes == 0 && toolDrops == 0;
+
+        // 4 Mandatory Top-Level Stages in Exact Order
+        SetStagePill(0, dialogueOk ? "Passed" : "Needs improvement", dialogueOk);
+        SetStagePill(1, perinealOk ? "Passed" : "Needs improvement", perinealOk);
+        SetStagePill(2, drapingOk ? "Passed" : "Needs improvement", drapingOk);
+        SetStagePill(3, tablePrepOk ? "Passed" : "Needs improvement", tablePrepOk);
+
+        // Exact 2 Separated Sub-Rows under Perineal Cleaning
+        if (ovPerinealWashSubText != null)
+        {
+            ovPerinealWashSubText.text = washOk
+                ? "<color=#34D399>Passed</color>"
+                : $"<color=#FBBF24>{wrongWashCount} wrong area{(washDeduction > 0 ? $" (-{washDeduction})" : "")}</color>";
+        }
+        if (ovPerinealCottonSubText != null)
+        {
+            int cottonStagePen = cottonTierDeduction + strokePenalty;
+            ovPerinealCottonSubText.text = cottonOk
+                ? "<color=#34D399>Passed</color>"
+                : $"<color=#FBBF24>{cottonMistakes + affectedCottons} issue(s){(cottonStagePen > 0 ? $" (-{cottonStagePen})" : "")}</color>";
+        }
+
+        // Exact 2 Separated Sub-Rows under Draping
+        if (ovDrapeMotherSubText != null)
+        {
+            ovDrapeMotherSubText.text = motherDrapeOk
+                ? "<color=#34D399>Passed</color>"
+                : $"<color=#FBBF24>{motherDrapeMistakes} error(s)</color>";
+        }
+        if (ovDrapeTableSubText != null)
+        {
+            ovDrapeTableSubText.text = tableDrapeOk
+                ? "<color=#34D399>Passed</color>"
+                : $"<color=#FBBF24>{tableDrapeMistakes} error(s)</color>";
+        }
+
+        // Mistake Breakdown Ledger
+        if (ovCottonAffectedValueText != null) ovCottonAffectedValueText.text = affectedCottons.ToString();
+        if (ovCottonDeductionValueText != null)
+        {
+            ovCottonDeductionValueText.text = cottonTierDeduction > 0 ? $"-{cottonTierDeduction}" : "0";
+            ovCottonDeductionValueText.color = cottonTierDeduction > 0 ? ColRedBright : new Color(0.58f, 0.68f, 0.78f, 1f);
+        }
+
+        var dropEntries = GetToolDropBreakdownEntries();
+        PopulateToolBreakdownRows(dropEntries, toolDrops);
+
+        if (ovToolDeductionValueText != null)
+        {
+            ovToolDeductionValueText.text = toolDeduction > 0 ? $"-{toolDeduction}" : "0";
+            ovToolDeductionValueText.color = toolDeduction > 0 ? ColRedBright : new Color(0.58f, 0.68f, 0.78f, 1f);
+        }
+        if (ovTotalDeductionsValueText != null)
+        {
+            ovTotalDeductionsValueText.text = totalDeductions > 0 ? $"-{totalDeductions}" : "0";
+            ovTotalDeductionsValueText.color = totalDeductions > 0 ? ColRedBright : ColGreenBright;
+        }
+
+        // Clinical Feedback Block
+        AssignClinicalFeedback(debrief, washOk, cottonOk, drapingOk, tablePrepSlotMistakes == 0, toolDrops);
+    }
+
+    private void PopulateToolBreakdownRows(List<ToolDropSummaryEntry> dropEntries, int totalDrops)
+    {
+        if (ovToolRowObjects == null) return;
+
+        for (int i = 0; i < ovToolRowObjects.Length; i++)
+        {
+            if (ovToolRowObjects[i] != null) ovToolRowObjects[i].SetActive(false);
+        }
+
+        if (totalDrops == 0 || dropEntries.Count == 0)
+        {
+            if (ovToolRowObjects.Length > 0 && ovToolRowObjects[0] != null)
+            {
+                ovToolRowObjects[0].SetActive(true);
+                if (ovToolRowLabelTexts[0] != null) ovToolRowLabelTexts[0].text = "Dropped tools";
+                if (ovToolRowValueTexts[0] != null) ovToolRowValueTexts[0].text = "0";
+            }
+            if (ovToolHandlingNoteText != null)
+            {
+                ovToolHandlingNoteText.gameObject.SetActive(true);
+                ovToolHandlingNoteText.text = "All instruments were handled properly.";
+            }
+            return;
+        }
+
+        if (ovToolHandlingNoteText != null) ovToolHandlingNoteText.gameObject.SetActive(false);
+
+        int slotCap = Mathf.Min(ovToolRowObjects.Length, dropEntries.Count);
+        for (int i = 0; i < slotCap; i++)
+        {
+            if (ovToolRowObjects[i] == null) continue;
+            ovToolRowObjects[i].SetActive(true);
+
+            // If more than 4 distinct tools dropped, summarize remaining in the last row cleanly
+            if (i == slotCap - 1 && dropEntries.Count > ovToolRowObjects.Length)
+            {
+                int restCount = 0;
+                for (int r = i; r < dropEntries.Count; r++) restCount += dropEntries[r].dropCount;
+                if (ovToolRowLabelTexts[i] != null) ovToolRowLabelTexts[i].text = "Other tools dropped";
+                if (ovToolRowValueTexts[i] != null) ovToolRowValueTexts[i].text = restCount.ToString();
+            }
+            else
+            {
+                if (ovToolRowLabelTexts[i] != null) ovToolRowLabelTexts[i].text = $"{dropEntries[i].toolName} dropped";
+                if (ovToolRowValueTexts[i] != null) ovToolRowValueTexts[i].text = dropEntries[i].dropCount.ToString();
+            }
         }
     }
 
-    private void PopulatePage1_Dialogue()
+    private void AssignClinicalFeedback(CommunicationDebriefData debrief, bool washOk, bool cottonOk, bool drapingOk, bool tableSlotsOk, int toolDrops)
     {
-        CommunicationDebriefData debrief = VRDemoGameManager.Instance != null
-            ? VRDemoGameManager.Instance.communicationDebrief
-            : (VRDemoGameManager.LastDebrief != null ? VRDemoGameManager.LastDebrief : null);
+        if (ovFeedbackHeadingText == null || ovFeedbackBodyText == null) return;
 
+        if (toolDrops > 0 || !tableSlotsOk)
+        {
+            ovFeedbackHeadingText.text = "Instrument handling";
+            ovFeedbackBodyText.text = "Improper handling or misplacement of instruments can compromise sterility and increase contamination risks. Maintain firm control of instruments over the sterile field.";
+        }
+        else if (!cottonOk || !washOk)
+        {
+            ovFeedbackHeadingText.text = "Aseptic perineal cleansing";
+            ovFeedbackBodyText.text = "Ensure anterior-to-posterior cleansing over the perineal zone using one fresh cotton ball per stroke and discarding cleanly into the waste basin.";
+        }
+        else if (!drapingOk)
+        {
+            ovFeedbackHeadingText.text = "Sterile draping technique";
+            ovFeedbackBodyText.text = "Unfold sterile linen using both hands and drape anatomical zones and the Mayo stand in proper aseptic order.";
+        }
+        else if (debrief != null && debrief.compositeScore < 80f)
+        {
+            ovFeedbackHeadingText.text = "Therapeutic communication";
+            ovFeedbackBodyText.text = "Verify two patient identifiers, introduce your nursing role clearly, and explain expected physical sensations before beginning care.";
+        }
+        else
+        {
+            ovFeedbackHeadingText.text = "Optimal sterile adherence";
+            ovFeedbackBodyText.text = "All communication checks, perineal cleansing strokes, sterile drapes, and instrument placements met aseptic protocol standards.";
+        }
+    }
+
+    private void SetStagePill(int idx, string text, bool passed)
+    {
+        if (ovStagePillBgs == null || idx >= ovStagePillBgs.Length) return;
+        Color fg = passed ? ColGreenBright : ColAmberBright;
+        Color bg = passed ? ColGreenPillBg : ColAmberPillBg;
+        SetPill(ovStagePillBgs[idx], ovStagePillTexts != null && idx < ovStagePillTexts.Length ? ovStagePillTexts[idx] : null, text, fg, bg);
+    }
+
+    private static void SetPill(Image bg, TMP_Text label, string text, Color fg, Color fill)
+    {
+        if (bg != null)
+        {
+            if (bg.sprite == null) bg.sprite = GetRoundedSprite();
+            bg.type = Image.Type.Sliced;
+            bg.color = fill;
+        }
+        if (label != null)
+        {
+            label.text = text;
+            label.color = fg;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 1: STAGE 1 DETAILS — DIALOGUE & DECISION-MAKING
+    // ═══════════════════════════════════════════════════════════════
+
+    private void PopulatePage1_Dialogue(CommunicationDebriefData debrief)
+    {
         if (debrief == null)
         {
             debrief = new CommunicationDebriefData
@@ -255,160 +576,274 @@ public class SummaryScreenController : MonoBehaviour
 
         if (p1OverallRatingText != null)
         {
-            p1OverallRatingText.text = $"Communication score: <b>{Mathf.RoundToInt(debrief.compositeScore)}%</b>";
+            string penTxt = debrief.dialogueDeduction > 0 ? $"  <color=#F87171>(-{debrief.dialogueDeduction} pts)</color>" : "  <color=#34D399>(0 deduction)</color>";
+            p1OverallRatingText.text = $"Communication score: <b>{Mathf.RoundToInt(debrief.compositeScore)}%</b>{penTxt}";
         }
 
         if (p1ArchetypeTitleText != null)
         {
-            p1ArchetypeTitleText.text = "Communication summary";
+            p1ArchetypeTitleText.text = $"{debrief.tierRating}  •  {debrief.archetypeTitle}";
         }
 
         if (p1DebriefNotesText != null)
         {
             p1DebriefNotesText.text = string.IsNullOrWhiteSpace(debrief.personalizedInstructorDebrief)
                 ? "No communication notes were recorded."
-                : $"\"{debrief.personalizedInstructorDebrief}\"";
+                : debrief.personalizedInstructorDebrief;
         }
 
-        // Sub-criteria progress bars
         SetBar(p1BarProfessionalism, p1TextProfessionalism, debrief.professionalismPercent);
         SetBar(p1BarEmpathy, p1TextEmpathy, debrief.empathyPercent);
         SetBar(p1BarClarity, p1TextClarity, debrief.clarityPercent);
 
         if (p1CritiquesListText != null)
         {
-            p1CritiquesListText.text = debrief.specificTokenCritiques.Count > 0
-                ? "<b>Phrase observations:</b>\n• " + string.Join("\n• ", debrief.specificTokenCritiques.ToArray())
-                : "<b>Phrase observations:</b>\n• No phrase observations were recorded.";
+            p1CritiquesListText.text = BuildDialogueDecisionsMarkup(debrief);
         }
     }
 
-    // One neutral colour for every bar: no grade banding.
-    private static readonly Color BarNeutral = new Color(0.22f, 0.62f, 0.90f);
-    private static Sprite barSprite;
+    private static string BuildDialogueDecisionsMarkup(CommunicationDebriefData debrief)
+    {
+        if (debrief.decisionEntries != null && debrief.decisionEntries.Count > 0)
+        {
+            var sb = new StringBuilder();
+            foreach (var entry in debrief.decisionEntries)
+            {
+                string statusTag = entry.isSuboptimalOrWrong
+                    ? $"<color=#FBBF24>[Needs Review • {entry.selectedScore:0.0}/5]</color>"
+                    : $"<color=#34D399>[Optimal • {entry.selectedScore:0.0}/5]</color>";
+                sb.AppendLine($"<b>{entry.slotLabel}</b> {statusTag}");
+                sb.AppendLine($"<color=#9FB3C8>Q: {entry.promptQuestion}</color>");
+                if (entry.isSuboptimalOrWrong)
+                {
+                    sb.AppendLine($"<color=#F87171>• Your Choice:</color> \"{entry.selectedPhrase}\" — {entry.whyWrongNote}");
+                    sb.AppendLine($"<color=#34D399>• Recommended Answer:</color> \"{entry.recommendedPhrase}\"");
+                    sb.AppendLine($"<color=#94A3B8>  Why it matters: {entry.clinicalRationale}</color>");
+                }
+                else
+                {
+                    sb.AppendLine($"<color=#E2E8F0>• Your Choice:</color> \"{entry.selectedPhrase}\"");
+                    sb.AppendLine($"<color=#94A3B8>  Rationale: {entry.clinicalRationale}</color>");
+                }
+                sb.AppendLine();
+            }
+            return sb.ToString().TrimEnd();
+        }
+
+        return debrief.specificTokenCritiques.Count > 0
+            ? "<b>Phrase observations:</b>\n• " + string.Join("\n• ", debrief.specificTokenCritiques.ToArray())
+            : "<b>Phrase observations:</b>\n• No phrase observations were recorded.";
+    }
 
     private void SetBar(Image bar, TMP_Text label, float percentage)
     {
         if (bar != null)
         {
-            // A Filled Image ignores fillAmount without a sprite, so a 0% bar drew full width.
-            if (bar.sprite == null)
-            {
-                if (barSprite == null)
-                    barSprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f));
-                bar.sprite = barSprite;
-            }
-            bar.fillAmount = percentage / 100f;
+            EnsureFillableSprite(bar);
+            bar.fillAmount = Mathf.Clamp01(percentage / 100f);
             bar.color = BarNeutral;
         }
 
-        if (label != null)
+        if (label != null) label.text = $"{Mathf.RoundToInt(percentage)}%";
+    }
+
+    private static void EnsureFillableSprite(Image img)
+    {
+        if (img.sprite == null)
         {
-            label.text = $"{Mathf.RoundToInt(percentage)}%";
+            if (cachedBarSprite == null)
+                cachedBarSprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f));
+            img.sprite = cachedBarSprite;
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 2: STAGE 2 DETAILS — PERINEAL CLEANING (SEPARATED SUB-CARDS)
+    // ═══════════════════════════════════════════════════════════════
+
     private void PopulatePage2_Perineal()
     {
+        var events = EvaluationLogger.Instance.events ?? new List<EvaluationEvent>();
+        int wrongWashCount = CountViolations(events, ClinicalViolationType.Wrong_Washing_Area);
+        int affectedCottons = GetAffectedCottonCount();
+        int cottonTierDeduction = GetCottonDeduction(affectedCottons);
+        int strokes3 = CountCorrectEvents(3, "Stroke");
+        int strokes5 = CountCorrectEvents(5, "Stroke");
+
+        if (p2WashCardText != null)
+        {
+            var washMistakes = FilterEventsByType(events, ClinicalViolationType.Wrong_Washing_Area);
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>PART 1 — PERINEAL WASHING (Steps 2 & 4)</b>");
+            sb.AppendLine($"• {StepStatusLine(2)}");
+            sb.AppendLine($"• {StepStatusLine(4)}");
+            if (washMistakes.Count == 0)
+            {
+                sb.AppendLine("<color=#34D399>• Area Compliance: Warm water poured cleanly over perineal area (0 off-target errors).</color>");
+            }
+            else
+            {
+                sb.AppendLine($"<color=#F87171>• Off-Target Pouring ({wrongWashCount}x):</color> Poured onto surrounding legs/abdomen during Step 2 wash.");
+            }
+            p2WashCardText.text = sb.ToString().TrimEnd();
+        }
+
+        if (p2CottonCardText != null)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>PART 2 — 9-COTTON-BALL CLEANSING TECHNIQUE (Steps 3 & 5)</b>");
+            sb.AppendLine($"• Step 3 (7.5% Scrub): {strokes3} strokes  |  Step 5 (10% Paint): {strokes5} strokes");
+            sb.AppendLine($"• Cotton balls affected: <b>{affectedCottons}</b>   |   Cotton ball deduction: <b>{(cottonTierDeduction > 0 ? $"<color=#F87171>-{cottonTierDeduction} pts</color>" : "<color=#34D399>0 pts</color>")}</b>");
+
+            var techMistakes = FilterMistakesByKeywords("wipe", "stroke", "cotton", "used", "order", "reverse");
+            if (techMistakes.Count == 0)
+            {
+                sb.AppendLine("<color=#34D399>• Technique Compliance: Clean anterior-to-posterior order preserved with single-use cotton balls.</color>");
+            }
+            else
+            {
+                sb.AppendLine($"<color=#FBBF24>• Recorded Issues ({techMistakes.Count}):</color> " + string.Join("; ", techMistakes.Take(3)));
+            }
+            sb.Append("<color=#9FB3C8>Rationale: Clean-to-dirty strokes and single-use cotton prevent perineal-to-vaginal fecal flora transfer.</color>");
+            p2CottonCardText.text = sb.ToString();
+        }
+
+        // Legacy fallback fields if an un-upgraded scene uses them
         if (p2StatusSummaryText != null)
         {
             p2StatusSummaryText.text =
                 "<b>Steps recorded:</b>\n" +
                 StepStatusLine(2) + "\n" +
-                StepStatusLine(3, CountCorrectEvents(3, "Stroke"), "strokes") + "\n" +
+                StepStatusLine(3, strokes3, "strokes") + "\n" +
                 StepStatusLine(4) + "\n" +
-                StepStatusLine(5, CountCorrectEvents(5, "Stroke"), "strokes");
+                StepStatusLine(5, strokes5, "strokes");
         }
-
         if (p2MistakesListText != null)
         {
-            var perinealMistakes = FilterMistakesByKeywords("wipe", "stroke", "cotton", "wash", "perineal", "iodine");
-            p2MistakesListText.text = RecordedMistakesText(perinealMistakes);
+            p2MistakesListText.text = RecordedMistakesText(FilterMistakesByKeywords("wipe", "stroke", "cotton", "wash", "perineal", "iodine"));
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 3: STAGE 3 DETAILS — DRAPING (SEPARATED SUB-CARDS)
+    // ═══════════════════════════════════════════════════════════════
+
     private void PopulatePage3_Draping()
     {
+        var events = EvaluationLogger.Instance.events ?? new List<EvaluationEvent>();
+        int placedDrapeCount = CountCorrectEvents(6, "Drape");
+        int motherMistakes = CountViolationsForStepAndDetail(events, 6, "Mayo", excludeMatch: true);
+        int tableMistakes = CountViolationsForStepAndDetail(events, 6, "Mayo", excludeMatch: false);
+
+        if (p3MotherCardText != null)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>PART 1 — DRAPING THE MOTHER (4 Anatomical Zones)</b>");
+            sb.AppendLine($"• Patient drapes placed: <b>{Mathf.Min(4, placedDrapeCount)} / 4</b> (Buttocks -> Abdomen -> Left Thigh -> Right Thigh)");
+            sb.AppendLine(motherMistakes == 0
+                ? "<color=#34D399>• Protocol Compliance: Sequential two-handed sterile draping maintained.</color>"
+                : $"<color=#F87171>• Recorded Violations ({motherMistakes}):</color> One-handed hold or out-of-order drape placement.");
+            p3MotherCardText.text = sb.ToString().TrimEnd();
+        }
+
+        if (p3TableCardText != null)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>PART 2 — DRAPING THE TABLE (Mayo Stand Sterile Cover)</b>");
+            bool mayoDraped = TablePrepManager.Instance != null ? TablePrepManager.Instance.isMayoDraped : placedDrapeCount >= 4;
+            sb.AppendLine($"• Mayo stand sterile drape status: <b>{(mayoDraped ? "<color=#34D399>Draped & Sterile</color>" : "<color=#FBBF24>Not Completed</color>")}</b>");
+            sb.AppendLine(tableMistakes == 0
+                ? "<color=#34D399>• Technique Compliance: Mayo stand draped properly before placing any surgical tools.</color>"
+                : $"<color=#F87171>• Recorded Violations ({tableMistakes}):</color> Improper 1-handed drape or instrument placed on bare Mayo stand.");
+            sb.Append("<color=#9FB3C8>Rationale: Maintaining a sterile barrier over both mother and Mayo tray isolates the surgical field.</color>");
+            p3TableCardText.text = sb.ToString();
+        }
+
         if (p3StatusSummaryText != null)
         {
             p3StatusSummaryText.text =
                 "<b>Steps recorded:</b>\n" +
-                StepStatusLine(6, CountCorrectEvents(6, "Drape"), "of 4 drapes placed");
+                StepStatusLine(6, placedDrapeCount, "drapes placed");
         }
-
         if (p3MistakesListText != null)
         {
-            var drapingMistakes = FilterMistakesByStep(6);
-            p3MistakesListText.text = RecordedMistakesText(drapingMistakes);
+            p3MistakesListText.text = RecordedMistakesText(FilterMistakesByStep(6));
         }
     }
 
-    private static string RecordedMistakesText(List<string> mistakes)
-    {
-        return mistakes.Count == 0
-            ? "<b>Recorded mistakes (0):</b>\n• No mistakes were recorded in this section."
-            : $"<b>Recorded mistakes ({mistakes.Count}):</b>\n• " + string.Join("\n• ", mistakes.ToArray());
-    }
-
-    /// <summary>"Completed" only when the step has a closed timing entry (the phase moved past it).</summary>
-    private static string StepStatusLine(int step, int count = -1, string countLabel = null)
-    {
-        bool completed = false;
-        foreach (var t in EvaluationLogger.Instance.stepTimings)
-            if (t.step == step && t.endTime >= 0f) { completed = true; break; }
-
-        string name = EvaluationLogger.Instance.Matrix.ToConfig().StepName(step);
-        string extra = count >= 0 ? $"  <color=#9FB3C8>({count} {countLabel})</color>" : "";
-        return $"• Step {step}: {name} — {(completed ? "Completed" : "Not completed")}{extra}";
-    }
-
-    private static int CountCorrectEvents(int step, string actionPrefix)
-    {
-        int n = 0;
-        foreach (var e in EvaluationLogger.Instance.events)
-            if (e.isCorrect && e.step == step && e.action != null && e.action.StartsWith(actionPrefix)) n++;
-        return n;
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 4: STAGE 4 DETAILS — TABLE PREPARATION
+    // ═══════════════════════════════════════════════════════════════
 
     private void PopulatePage4_TableAndFinal()
     {
-        int score = VRDemoGameManager.Instance != null 
-            ? VRDemoGameManager.Instance.currentScore 
-            : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.finalScore : 100);
+        int score = GetRecordedFinalScore();
+        var events = EvaluationLogger.Instance.events ?? new List<EvaluationEvent>();
+        int wrongSlots = CountViolations(events, ClinicalViolationType.Incorrect_Table_Slot);
+        int unsterileMayo = CountViolations(events, ClinicalViolationType.Unsterile_Mayo_Placement_Violation);
+        int totalDrops = GetTotalToolDropCount();
+        int toolDeduction = GetToolDropDeduction(totalDrops);
+        var dropEntries = GetToolDropBreakdownEntries();
 
-        if (p4FinalScoreText != null)
+        if (p4PlacementsCardText != null)
         {
-            p4FinalScoreText.text = $"Recorded score: <b>{score} / 100</b>";
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>MAYO TABLE INSTRUMENT PLACEMENTS</b>");
+            bool prepDone = TablePrepManager.Instance != null && TablePrepManager.Instance.isTablePrepCompleted;
+            sb.AppendLine($"• Setup Confirmation: <b>{(prepDone ? "<color=#34D399>Confirmed Complete</color>" : StepStatusLine(7))}</b>");
+            sb.AppendLine($"• Wrong-slot placement attempts: <b>{wrongSlots}</b>   |   Unsterile bare-Mayo breaches: <b>{unsterileMayo}</b>");
+            if (wrongSlots == 0 && unsterileMayo == 0)
+            {
+                sb.AppendLine("<color=#34D399>• Slot Accuracy: All instruments matched their designated tray positions.</color>");
+            }
+            else
+            {
+                var step7Mistakes = FilterMistakesByStep(7);
+                if (step7Mistakes.Count > 0) sb.AppendLine($"<color=#FBBF24>• Recent Issues:</color> " + string.Join("; ", step7Mistakes.Take(3)));
+            }
+            p4PlacementsCardText.text = sb.ToString().TrimEnd();
         }
 
+        if (p4DropsCardText != null)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>INSTRUMENT HANDLING & DROPS</b>");
+            if (totalDrops == 0 || dropEntries.Count == 0)
+            {
+                sb.AppendLine("• Dropped tools: <b>0</b>   |   Tool deduction: <color=#34D399><b>0 pts</b></color>");
+                sb.AppendLine("<color=#34D399>• All instruments were handled properly throughout the simulation.</color>");
+            }
+            else
+            {
+                foreach (var entry in dropEntries)
+                {
+                    sb.AppendLine($"• {entry.toolName} dropped: <b>{entry.dropCount}</b>");
+                }
+                sb.AppendLine($"• Tool deduction (tiered): <color=#F87171><b>-{toolDeduction} pts</b></color>");
+            }
+            sb.Append("<color=#9FB3C8>Rationale: Dropping sterile instruments onto non-sterile surfaces contaminates the tray and requires replacement.</color>");
+            p4DropsCardText.text = sb.ToString();
+        }
+
+        if (p4FinalScoreText != null) p4FinalScoreText.text = $"Recorded score: <b>{score} / 100</b>";
         if (p4OverallMistakesListText != null)
         {
-            List<string> allMistakes = VRDemoGameManager.Instance != null
-                ? VRDemoGameManager.Instance.mistakeLog
-                : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.mistakesMade : new List<string>());
-
+            var allMistakes = GetRecordedMistakeStrings();
             p4OverallMistakesListText.text = allMistakes.Count == 0
                 ? "<b>Recorded mistakes (0):</b>\n• No mistakes were recorded by the simulation."
                 : $"<b>Recorded mistakes ({allMistakes.Count}):</b>\n• " + string.Join("\n• ", allMistakes.ToArray());
         }
     }
 
-    // ── Page 5: Decision Matrix ──
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 5: DECISION MATRIX EVALUATION (PRESERVED + WIRED)
+    // ═══════════════════════════════════════════════════════════════
 
-    private static readonly Color CellNA = new Color(0.15f, 0.20f, 0.28f, 1f);
-    private static readonly Color CellHeader = new Color(0.08f, 0.12f, 0.18f, 0.95f);
-    // One neutral colour for every scored cell: no pass/fail banding.
-    private static readonly Color CellScored = new Color(0.20f, 0.29f, 0.40f, 1f);
-
-    private void PopulatePage5_Matrix()
+    private void PopulatePage5_Matrix(SimulationScoringRubricSO rubric)
     {
-        var gm = VRDemoGameManager.Instance;
-        var rubric = gm != null ? gm.scoringRubric : VRDemoGameManager.LastRubric;
-        var debrief = gm != null ? gm.communicationDebrief : VRDemoGameManager.LastDebrief;
-        matrixResult = EvaluationLogger.Instance.Evaluate(rubric, debrief);
+        if (page5Matrix == null) return;
         var config = EvaluationLogger.Instance.Matrix.ToConfig(rubric);
-
-        int legacy = gm != null ? Mathf.Clamp(gm.currentScore, 0, 100) : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.finalScore : 100);
+        int legacy = GetRecordedFinalScore();
 
         if (p5ScoresText != null)
         {
@@ -427,7 +862,7 @@ public class SummaryScreenController : MonoBehaviour
         for (int i = p5GridContainer.childCount - 1; i >= 0; i--) Destroy(p5GridContainer.GetChild(i).gameObject);
 
         int cols = DecisionMatrixConfig.CriterionCount + 1;
-        int rows = config.StepCount + 2; // header + steps + criterion score row
+        int rows = config.StepCount + 2;
         const float nameColWidth = 0.32f;
         float critColWidth = (1f - nameColWidth) / DecisionMatrixConfig.CriterionCount;
 
@@ -518,7 +953,9 @@ public class SummaryScreenController : MonoBehaviour
         tmp.text = text;
     }
 
-    // ── Page 6+: Mistake Gallery ──
+    // ═══════════════════════════════════════════════════════════════
+    // PAGE 6+: MISTAKE GALLERY
+    // ═══════════════════════════════════════════════════════════════
 
     private void PopulateGalleryPage(int galleryPage)
     {
@@ -565,6 +1002,162 @@ public class SummaryScreenController : MonoBehaviour
         }
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // DATA HELPERS & LIFECYCLE
+    // ═══════════════════════════════════════════════════════════════
+
+    private int GetRecordedFinalScore()
+    {
+        if (VRDemoGameManager.Instance != null) return Mathf.Clamp(VRDemoGameManager.Instance.currentScore, 0, 100);
+        if (VRDemoGameManager.LastCompletedRecord != null) return Mathf.Clamp(VRDemoGameManager.LastCompletedRecord.finalScore, 0, 100);
+        return 100;
+    }
+
+    private int GetRecordedTotalDeductions(int finalScore)
+    {
+        if (VRDemoGameManager.Instance != null) return VRDemoGameManager.Instance.TotalDeductions;
+        if (VRDemoGameManager.LastCompletedRecord != null && VRDemoGameManager.LastCompletedRecord.totalDeductions > 0)
+            return VRDemoGameManager.LastCompletedRecord.totalDeductions;
+        return Mathf.Max(0, 100 - finalScore);
+    }
+
+    private int GetAffectedCottonCount()
+    {
+        if (VRDemoGameManager.Instance != null) return VRDemoGameManager.Instance.AffectedCottonBallCount;
+        if (VRDemoGameManager.LastCompletedRecord != null) return VRDemoGameManager.LastCompletedRecord.affectedCottonBallCount;
+        return 0;
+    }
+
+    private static int GetCottonDeduction(int count) => VRDemoGameManager.GetCottonBallTierPenalty(count);
+
+    private int GetTotalToolDropCount()
+    {
+        if (VRDemoGameManager.Instance != null) return VRDemoGameManager.Instance.TotalToolDropCount;
+        if (VRDemoGameManager.LastCompletedRecord != null) return VRDemoGameManager.LastCompletedRecord.totalToolDropCount;
+        return 0;
+    }
+
+    private static int GetToolDropDeduction(int count) => VRDemoGameManager.GetToolDropTierPenalty(count);
+
+    private List<ToolDropSummaryEntry> GetToolDropBreakdownEntries()
+    {
+        var result = new List<ToolDropSummaryEntry>();
+        if (VRDemoGameManager.Instance != null)
+        {
+            foreach (var kvp in VRDemoGameManager.Instance.ToolDropCounts)
+            {
+                if (kvp.Value > 0) result.Add(new ToolDropSummaryEntry { toolName = kvp.Key, dropCount = kvp.Value });
+            }
+        }
+        else if (VRDemoGameManager.LastCompletedRecord?.toolDropBreakdown != null)
+        {
+            foreach (var e in VRDemoGameManager.LastCompletedRecord.toolDropBreakdown)
+            {
+                if (e != null && e.dropCount > 0) result.Add(e);
+            }
+        }
+        result.Sort((a, b) => b.dropCount.CompareTo(a.dropCount));
+        return result;
+    }
+
+    private static int CountViolations(List<EvaluationEvent> events, params ClinicalViolationType[] types)
+    {
+        int count = 0;
+        var set = new HashSet<string>(types.Select(t => t.ToString()));
+        foreach (var e in events)
+        {
+            if (e != null && !e.isCorrect && !string.IsNullOrEmpty(e.violationType) && set.Contains(e.violationType)) count++;
+        }
+        return count;
+    }
+
+    private static int SumLegacyDeductionsForTypes(List<EvaluationEvent> events, params ClinicalViolationType[] types)
+    {
+        int sum = 0;
+        var set = new HashSet<string>(types.Select(t => t.ToString()));
+        foreach (var e in events)
+        {
+            if (e != null && !e.isCorrect && e.legacyPenaltyApplied && set.Contains(e.violationType)) sum += e.legacyPenalty;
+        }
+        return sum;
+    }
+
+    private static List<EvaluationEvent> FilterEventsByType(List<EvaluationEvent> events, ClinicalViolationType type)
+    {
+        string target = type.ToString();
+        return events.Where(e => e != null && !e.isCorrect && e.violationType == target).ToList();
+    }
+
+    private static int CountViolationsForStepAndDetail(List<EvaluationEvent> events, int step, string keyword, bool excludeMatch)
+    {
+        int count = 0;
+        foreach (var e in events)
+        {
+            if (e == null || e.isCorrect || e.step != step) continue;
+            bool hasKw = (!string.IsNullOrEmpty(e.detail) && e.detail.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                         (!string.IsNullOrEmpty(e.action) && e.action.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0);
+            if (excludeMatch ? !hasKw : hasKw) count++;
+        }
+        return count;
+    }
+
+    private static string RecordedMistakesText(List<string> mistakes)
+    {
+        return mistakes.Count == 0
+            ? "<b>Recorded mistakes (0):</b>\n• No mistakes were recorded in this section."
+            : $"<b>Recorded mistakes ({mistakes.Count}):</b>\n• " + string.Join("\n• ", mistakes.ToArray());
+    }
+
+    private static string StepStatusLine(int step, int count = -1, string countLabel = null)
+    {
+        bool completed = false;
+        foreach (var t in EvaluationLogger.Instance.stepTimings)
+            if (t.step == step && t.endTime >= 0f) { completed = true; break; }
+
+        string name = EvaluationLogger.Instance.Matrix.ToConfig().StepName(step);
+        string extra = count >= 0 ? $"  <color=#9FB3C8>({count} {countLabel})</color>" : "";
+        return $"Step {step}: {name} — {(completed ? "Completed" : "Not completed")}{extra}";
+    }
+
+    private static int CountCorrectEvents(int step, string actionPrefix)
+    {
+        int n = 0;
+        foreach (var e in EvaluationLogger.Instance.events)
+            if (e.isCorrect && e.step == step && e.action != null && e.action.StartsWith(actionPrefix)) n++;
+        return n;
+    }
+
+    private List<string> GetRecordedMistakeStrings()
+    {
+        if (VRDemoGameManager.Instance != null) return VRDemoGameManager.Instance.mistakeLog;
+        if (VRDemoGameManager.LastCompletedRecord?.mistakesMade != null) return VRDemoGameManager.LastCompletedRecord.mistakesMade;
+        return new List<string>();
+    }
+
+    private List<string> FilterMistakesByStep(int step)
+    {
+        var matches = new List<string>();
+        string prefix = $"Step {step}:";
+        foreach (var m in GetRecordedMistakeStrings())
+            if (m != null && m.StartsWith(prefix)) matches.Add(m);
+        return matches;
+    }
+
+    private List<string> FilterMistakesByKeywords(params string[] keywords)
+    {
+        var matches = new List<string>();
+        foreach (var m in GetRecordedMistakeStrings())
+        {
+            if (string.IsNullOrEmpty(m)) continue;
+            string lower = m.ToLowerInvariant();
+            foreach (var kw in keywords)
+            {
+                if (lower.Contains(kw)) { matches.Add(m); break; }
+            }
+        }
+        return matches;
+    }
+
     // ── Save / Don't Save ──
 
     public void SaveEvaluation()
@@ -577,7 +1170,7 @@ public class SummaryScreenController : MonoBehaviour
 
     public void DontSaveEvaluation()
     {
-        PreloadAllThumbnails();   // keep the gallery working after the temp files are deleted
+        PreloadAllThumbnails();
         EvaluationReportExporter.DiscardSession();
         PlayPageSound();
         RefreshSaveBar();
@@ -610,8 +1203,6 @@ public class SummaryScreenController : MonoBehaviour
         }
     }
 
-    private readonly Dictionary<string, Texture2D> thumbnailCache = new Dictionary<string, Texture2D>();
-
     private void PreloadAllThumbnails()
     {
         if (matrixResult == null) return;
@@ -636,7 +1227,7 @@ public class SummaryScreenController : MonoBehaviour
             thumbnailCache[captureId] = tex;
             return tex;
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
             Debug.LogWarning($"[SummaryScreen] Could not load capture '{captureId}': {ex.Message}");
             return null;
@@ -651,46 +1242,9 @@ public class SummaryScreenController : MonoBehaviour
         thumbnailCache.Clear();
     }
 
-    /// <summary>Mistake log lines recorded during the given step ("Step N: ...").</summary>
-    private List<string> FilterMistakesByStep(int step)
-    {
-        var matches = new List<string>();
-        var list = VRDemoGameManager.Instance != null
-            ? VRDemoGameManager.Instance.mistakeLog
-            : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.mistakesMade : null);
-        if (list == null) return matches;
-        string prefix = $"Step {step}:";
-        foreach (var m in list)
-            if (m.StartsWith(prefix)) matches.Add(m);
-        return matches;
-    }
-
-    private List<string> FilterMistakesByKeywords(params string[] keywords)
-    {
-        var matches = new List<string>();
-        var list = VRDemoGameManager.Instance != null
-            ? VRDemoGameManager.Instance.mistakeLog
-            : (VRDemoGameManager.LastCompletedRecord != null ? VRDemoGameManager.LastCompletedRecord.mistakesMade : null);
-        if (list == null) return matches;
-
-        foreach (var m in list)
-        {
-            string lower = m.ToLower();
-            foreach (var kw in keywords)
-            {
-                if (lower.Contains(kw))
-                {
-                    matches.Add(m);
-                    break;
-                }
-            }
-        }
-        return matches;
-    }
-
     public void RestartSimulation()
     {
-        EvaluationReportExporter.DiscardSession(); // no-op if already saved
+        EvaluationReportExporter.DiscardSession();
         PlayPageSound();
         Debug.Log("[SummaryScreen] Restarting simulation into MainScene...");
         VRSceneTransitionFader.FadeToScene("MainScene");
@@ -698,7 +1252,7 @@ public class SummaryScreenController : MonoBehaviour
 
     public void ReturnToMainMenu()
     {
-        EvaluationReportExporter.DiscardSession(); // no-op if already saved
+        EvaluationReportExporter.DiscardSession();
         PlayPageSound();
         Debug.Log("[SummaryScreen] Returning to Main Menu...");
         VRSceneTransitionFader.FadeToScene("MenuScene");
@@ -706,9 +1260,6 @@ public class SummaryScreenController : MonoBehaviour
 
     private void PlayPageSound()
     {
-        if (audioSource != null && pageFlipSound != null)
-        {
-            audioSource.PlayOneShot(pageFlipSound);
-        }
+        if (audioSource != null && pageFlipSound != null) audioSource.PlayOneShot(pageFlipSound);
     }
 }

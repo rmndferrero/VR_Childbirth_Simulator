@@ -58,6 +58,7 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler, IPointerClickHandler
         {
             Debug.LogWarning($"[PhraseDropSlot] Category mismatch: Slot '{slotTitle}' requires {targetCategory}, but chip was {chip.tokenData.category}.");
             FlashRejection();
+            chip.NotifyDroppedSuccessfully();
             chip.ReturnToPool();
             return;
         }
@@ -90,6 +91,7 @@ public class PhraseDropSlot : MonoBehaviour, IDropHandler, IPointerClickHandler
         }
 
         currentSlottedChip = newChip;
+        newChip.NotifyDroppedSuccessfully();
         newChip.SnapIntoSlot(this);
 
         UpdateVisualState();

@@ -279,20 +279,45 @@ public class PhraseDecisionMatrix : MonoBehaviour
         // Case 1: Target chip is currently in the slot -> dragged chip takes the slot
         if (targetChip.currentSlot == slot)
         {
+            draggedChip.NotifyDroppedSuccessfully();
             slot.AcceptChip(draggedChip);
         }
         // Case 2: Dragged chip is currently in the slot -> target chip takes the slot
         else if (draggedChip.currentSlot == slot)
         {
+            draggedChip.NotifyDroppedSuccessfully();
+            targetChip.NotifyDroppedSuccessfully();
             slot.AcceptChip(targetChip);
         }
-        // Case 3: Both are in the bank -> swap sibling index
+        // Case 3: Both are in the bank -> reparent dragged chip into bank first before swapping sibling indices
         else
         {
+            Transform bankParent = targetChip.transform.parent != null
+                ? targetChip.transform.parent
+                : (draggedChip.originalPoolParent != null ? draggedChip.originalPoolParent : targetChip.originalPoolParent);
+
+            if (bankParent != null && draggedChip.transform.parent != bankParent)
+            {
+                draggedChip.transform.SetParent(bankParent, false);
+            }
+
             int indexA = draggedChip.transform.GetSiblingIndex();
             int indexB = targetChip.transform.GetSiblingIndex();
             draggedChip.transform.SetSiblingIndex(indexB);
             targetChip.transform.SetSiblingIndex(indexA);
+
+            if (draggedChip.transform is RectTransform dRect)
+            {
+                dRect.localRotation = Quaternion.identity;
+                dRect.localScale = Vector3.one;
+            }
+            if (bankParent is RectTransform bankRect && bankParent.gameObject.activeInHierarchy)
+            {
+                UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(bankRect);
+            }
+
+            draggedChip.NotifyDroppedSuccessfully();
+            targetChip.NotifyDroppedSuccessfully();
         }
 
         UpdateLivePreview();
@@ -421,19 +446,30 @@ public class PhraseDecisionMatrix : MonoBehaviour
         float ePercent = Mathf.Clamp(((eRaw - 1.0f) / 4.0f) * 100f, 0f, 100f);
         float cPercent = Mathf.Clamp(((cRaw - 1.0f) / 4.0f) * 100f, 0f, 100f);
 
-        // 4. Cache Debrief Profile for Step 8 Summary Screen
+        // 4. Evaluate against Thresholds & Cache Debrief Profile for Step 8 Summary Screen
+        float greenThreshold = scenarioData != null ? scenarioData.greenThreshold : 80f;
+        float orangeThreshold = scenarioData != null ? scenarioData.orangeThreshold : 50f;
+        var rubric = VRDemoGameManager.Instance != null ? VRDemoGameManager.Instance.scoringRubric : null;
+        int deductionApplied = 0;
+        if (normalizedScore < orangeThreshold)
+        {
+            deductionApplied = rubric != null ? rubric.inadequateDialoguePenalty : 10;
+        }
+        else if (normalizedScore < greenThreshold)
+        {
+            deductionApplied = rubric != null ? rubric.suboptimalDialoguePenalty : 5;
+        }
+
         var debriefData = CommunicationDebriefData.CreateFromEvaluation(
-            pPercent, ePercent, cPercent, normalizedScore, introToken, identToken, explainToken);
+            pPercent, ePercent, cPercent, normalizedScore, introToken, identToken, explainToken,
+            scenarioData != null ? scenarioData.availableTokens : null, deductionApplied);
 
         if (VRDemoGameManager.Instance != null)
         {
             VRDemoGameManager.Instance.communicationDebrief = debriefData;
         }
 
-        // 5. Evaluate against Thresholds & Trigger Sequential Flow
-        float greenThreshold = scenarioData != null ? scenarioData.greenThreshold : 80f;
-        float orangeThreshold = scenarioData != null ? scenarioData.orangeThreshold : 50f;
-
+        // 5. Trigger Sequential Non-Blocking Outcome Flow
         StartCoroutine(ProcessEvaluationOutcome(normalizedScore, greenThreshold, orangeThreshold));
     }
 
@@ -460,11 +496,8 @@ public class PhraseDecisionMatrix : MonoBehaviour
         // ════════════════════════════════════════════════════════════════
         // STAGE 2: THEN SHOWS COLOR & FEEDBACK
         // ════════════════════════════════════════════════════════════════
-        bool isPassing = false;
-
         if (score >= greenThreshold)
         {
-            isPassing = true;
             if (liveStatementCardOutline != null) liveStatementCardOutline.effectColor = greenColor;
             if (liveStatementCardBg != null) liveStatementCardBg.color = new Color(0.04f, 0.20f, 0.13f, 0.95f);
 
@@ -479,7 +512,6 @@ public class PhraseDecisionMatrix : MonoBehaviour
         }
         else if (score >= orangeThreshold)
         {
-            isPassing = true;
             if (liveStatementCardOutline != null) liveStatementCardOutline.effectColor = orangeColor;
             if (liveStatementCardBg != null) liveStatementCardBg.color = new Color(0.24f, 0.16f, 0.04f, 0.95f);
 
@@ -500,14 +532,16 @@ public class PhraseDecisionMatrix : MonoBehaviour
         }
         else
         {
-            isPassing = false;
             if (liveStatementCardOutline != null) liveStatementCardOutline.effectColor = redColor;
             if (liveStatementCardBg != null) liveStatementCardBg.color = new Color(0.25f, 0.08f, 0.08f, 0.95f);
 
             if (feedbackBannerText != null)
             {
-                feedbackBannerText.text = $"<color=#EF4444><b>[X] Protocol Inadequate ({Mathf.RoundToInt(score)}%): Consent Denied</b></color>\n" +
-                    "<i>Pitcher Wash remains locked. Please select appropriate phrases and try again.</i>";
+                string response = scenarioData != null && !string.IsNullOrEmpty(scenarioData.inadequatePatientResponse)
+                    ? scenarioData.inadequatePatientResponse
+                    : "\"Wait, who are you? What are you going to do?\"";
+                feedbackBannerText.text = $"<color=#EF4444><b>[!] Protocol Inadequate ({Mathf.RoundToInt(score)}%, -10 pts)</b></color>\n" +
+                    $"{response}\n<i>Proceeding to Step 2 — review recommended phrasing in the final assessment.</i>";
             }
 
             PlaySound(warningClip);
@@ -516,32 +550,22 @@ public class PhraseDecisionMatrix : MonoBehaviour
             {
                 VRDemoGameManager.Instance.RecordViolation(
                     ClinicalViolationType.Inadequate_Dialogue,
-                    "Inadequate patient communication: Failed to obtain valid informed consent.");
+                    "Inadequate patient communication: Failed to obtain clear informed consent.");
             }
         }
 
         // ════════════════════════════════════════════════════════════════
-        // STAGE 3: THEN PROCEEDS
+        // STAGE 3: NON-BLOCKING PROGRESSION TO STEP 2 (All Tiers)
         // ════════════════════════════════════════════════════════════════
         yield return new WaitForSeconds(2.0f);
 
-        if (isPassing)
+        if (PerinealCareManager.Instance != null)
         {
-            // Unlock Pitcher and advance to Step 2
-            if (PerinealCareManager.Instance != null)
-            {
-                PerinealCareManager.Instance.OnMotherInformedConsentGiven();
-            }
+            PerinealCareManager.Instance.OnMotherInformedConsentGiven();
+        }
 
-            yield return new WaitForSeconds(0.5f);
-            gameObject.SetActive(false);
-        }
-        else
-        {
-            // Allow student to change choices and try again
-            isEvaluationLocked = false;
-            if (confirmButton != null) confirmButton.interactable = true;
-        }
+        yield return new WaitForSeconds(0.5f);
+        gameObject.SetActive(false);
     }
 
     public void LoadOptimalPreset()
@@ -577,6 +601,7 @@ public class PhraseDecisionMatrix : MonoBehaviour
     public void ClearFormulation()
     {
         if (isEvaluationLocked) return;
+        DraggablePhraseChip.CancelAnyActiveDrag();
         if (introSlot != null) introSlot.ClearSlot();
         if (identSlot != null) identSlot.ClearSlot();
         if (explainSlot != null) explainSlot.ClearSlot();

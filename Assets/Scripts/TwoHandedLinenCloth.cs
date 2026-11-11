@@ -150,6 +150,11 @@ public class TwoHandedLinenCloth : MonoBehaviour
             {
                 VRHeadsetVisualFeedback.Instance.TriggerStep1ToolViolation("Sterile Linen");
             }
+            if (Time.time - lastOneHandWarningTime > 1.5f)
+            {
+                lastOneHandWarningTime = Time.time;
+                VRDemoGameManager.Instance.RecordViolation(ClinicalViolationType.Tool_Handled_Before_Consent, "Sterile Linen");
+            }
         }
     }
 

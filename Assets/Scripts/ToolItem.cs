@@ -41,6 +41,7 @@ public class ToolItem : MonoBehaviour
     // State
     private bool isLockedOnTable2 = false;
     private bool isBeingRejected = false;
+    private bool hasCountedCurrentReleaseDrop = false;
     private Coroutine rejectCo;
     private Coroutine dropCo;
 
@@ -140,17 +141,26 @@ public class ToolItem : MonoBehaviour
                 }
             }
 
-            bool isForceps = GetComponent<ForcepsController>() != null || 
-                             (!string.IsNullOrEmpty(toolID) && toolID.ToLower().Contains("forceps")) || 
-                             gameObject.name.ToLower().Contains("forceps");
+            bool usesRigidGrip = UsesRigidInstrumentGrip();
 
+            var grabTransformers = GetComponentsInChildren<UnityEngine.XR.Interaction.Toolkit.Transformers.XRGeneralGrabTransformer>(true);
+            foreach (var gt in grabTransformers)
+            {
+                if (gt != null)
+                {
+                    gt.allowOneHandedScaling = false;
+                    gt.allowTwoHandedScaling = false;
+                }
+            }
+
+            grab.trackScale = false;
             grab.useDynamicAttach = false;
             grab.matchAttachPosition = true;
             grab.matchAttachRotation = true;
 
-            if (isForceps)
+            if (usesRigidGrip)
             {
-                // Lock forceps rigidly into player's hand with zero wobble or lag
+                // Match Forceps hold stability across all instruments: zero lag, zero sag, zero physics jitter
                 grab.attachEaseInTime = 0f;
                 grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
                 grab.smoothPosition = false;
@@ -164,6 +174,56 @@ public class ToolItem : MonoBehaviour
 
             SetupHandAttachPoint();
         }
+    }
+
+    private bool UsesRigidInstrumentGrip()
+    {
+        return GetComponent<TwoHandedLinenCloth>() == null;
+    }
+
+    private Bounds ComputeCombinedLocalBounds()
+    {
+        Bounds combined = default;
+        bool hasAny = false;
+        Matrix4x4 worldToRoot = transform.worldToLocalMatrix;
+
+        var filters = GetComponentsInChildren<MeshFilter>(true);
+        foreach (var mf in filters)
+        {
+            if (mf == null || mf.sharedMesh == null) continue;
+            Bounds mb = mf.sharedMesh.bounds;
+            Matrix4x4 childToRoot = worldToRoot * mf.transform.localToWorldMatrix;
+
+            for (int xi = -1; xi <= 1; xi += 2)
+            for (int yi = -1; yi <= 1; yi += 2)
+            for (int zi = -1; zi <= 1; zi += 2)
+            {
+                Vector3 corner = mb.center + Vector3.Scale(mb.extents, new Vector3(xi, yi, zi));
+                Vector3 localCorner = childToRoot.MultiplyPoint3x4(corner);
+                if (!hasAny) { combined = new Bounds(localCorner, Vector3.zero); hasAny = true; }
+                else combined.Encapsulate(localCorner);
+            }
+        }
+
+        if (hasAny) return combined;
+
+        var cols = GetComponentsInChildren<Collider>(true);
+        foreach (var col in cols)
+        {
+            if (col == null || col.isTrigger) continue;
+            Bounds cb = col.bounds;
+            for (int xi = -1; xi <= 1; xi += 2)
+            for (int yi = -1; yi <= 1; yi += 2)
+            for (int zi = -1; zi <= 1; zi += 2)
+            {
+                Vector3 worldCorner = cb.center + Vector3.Scale(cb.extents, new Vector3(xi, yi, zi));
+                Vector3 localCorner = worldToRoot.MultiplyPoint3x4(worldCorner);
+                if (!hasAny) { combined = new Bounds(localCorner, Vector3.zero); hasAny = true; }
+                else combined.Encapsulate(localCorner);
+            }
+        }
+
+        return hasAny ? combined : new Bounds(Vector3.zero, Vector3.one * 0.1f);
     }
 
     public void SetupHandAttachPoint()
@@ -218,73 +278,104 @@ public class ToolItem : MonoBehaviour
             return;
         }
 
-        // Calculate approximate local bounds
-        Bounds localBounds = new Bounds(Vector3.zero, Vector3.one * 0.1f);
-        var mf = GetComponentInChildren<MeshFilter>();
-        if (mf != null && mf.sharedMesh != null)
-        {
-            localBounds = mf.sharedMesh.bounds;
-        }
+        // Calculate combined local-space bounds across child meshes (handles offset prefabs cleanly)
+        Bounds localBounds = ComputeCombinedLocalBounds();
+        Vector3 ext = localBounds.extents;
+        Vector3 c = localBounds.center;
 
         if (nameLower.Contains("pitcher") || nameLower.Contains("flask"))
         {
-            // Pitcher: grip at side handle wrapped naturally across the 4 fingers
+            // Pitcher: grip at side handle wrapped naturally across the fingers
             attachPositionOffset = new Vector3(-0.0255f, 0.0195f, 0.0094f);
             attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
         }
         else if (nameLower.Contains("basin"))
         {
-            // Kidney basin: grip at side rim
-            attachPositionOffset = new Vector3(0.0f, localBounds.max.y * 0.8f, localBounds.max.z * 0.6f);
+            // Kidney basin: rim-pinch side grip keeping bowl upright
+            attachPositionOffset = new Vector3(c.x, localBounds.max.y - ext.y * 0.15f, localBounds.max.z - ext.z * 0.25f);
             attachEulerAngles = new Vector3(0.0f, 0.0f, 0.0f);
+        }
+        else if (nameLower.Contains("gauze"))
+        {
+            // Gauze pack: centered palm grip
+            attachPositionOffset = c;
+            attachEulerAngles = Vector3.zero;
+        }
+        else if (nameLower.Contains("catheter"))
+        {
+            // Straight catheter: grip mid-shaft angled naturally forward
+            if (ext.y >= ext.x && ext.y >= ext.z)
+            {
+                attachPositionOffset = new Vector3(c.x, c.y, c.z);
+                attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
+            }
+            else if (ext.z >= ext.x && ext.z >= ext.y)
+            {
+                attachPositionOffset = c;
+                attachEulerAngles = Vector3.zero;
+            }
+            else
+            {
+                attachPositionOffset = c;
+                attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+            }
         }
         else if (nameLower.Contains("scissor") || nameLower.Contains("curette") || nameLower.Contains("clamp") || nameLower.Contains("needle") || nameLower.Contains("tongs"))
         {
-            // Scissors, Clamps, Needle Holders: grip at the finger rings / back handle
-            Vector3 ext = localBounds.extents;
-            // Identify longest axis
+            // Scissors, clamps, and curettes: grip rear handle / finger rings so blades/tips point forward (+Z)
             if (ext.z >= ext.x && ext.z >= ext.y)
             {
-                attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.35f);
+                attachPositionOffset = new Vector3(c.x, c.y, localBounds.min.z + ext.z * 0.45f);
                 attachEulerAngles = Vector3.zero;
             }
             else if (ext.y >= ext.x && ext.y >= ext.z)
             {
-                attachPositionOffset = new Vector3(0.0f, localBounds.min.y + ext.y * 0.35f, 0.0f);
+                attachPositionOffset = new Vector3(c.x, localBounds.min.y + ext.y * 0.45f, c.z);
                 attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
             }
             else
             {
-                attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.35f, 0.0f, 0.0f);
+                attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.45f, c.y, c.z);
                 attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
             }
         }
         else if (nameLower.Contains("forcep"))
         {
-            // Forceps (Pickup / Handling / Thumb): grip at middle-to-back knurled shaft
-            Vector3 ext = localBounds.extents;
+            // Forceps (Pickup / Handling / Thumb / Sponge): grip rear/middle shaft
             if (ext.y >= ext.x && ext.y >= ext.z)
             {
-                attachPositionOffset = new Vector3(0.0f, localBounds.min.y + ext.y * 0.5f, 0.0f);
+                attachPositionOffset = new Vector3(c.x, c.y, c.z);
                 attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
             }
             else if (ext.z >= ext.x && ext.z >= ext.y)
             {
-                attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.5f);
+                attachPositionOffset = c;
                 attachEulerAngles = Vector3.zero;
             }
             else
             {
-                attachPositionOffset = new Vector3(localBounds.min.x + ext.x * 0.5f, 0.0f, 0.0f);
+                attachPositionOffset = c;
                 attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
             }
         }
         else if (nameLower.Contains("scalpel"))
         {
-            // Scalpel: pencil grip along handle
-            Vector3 ext = localBounds.extents;
-            attachPositionOffset = new Vector3(0.0f, 0.0f, localBounds.min.z + ext.z * 0.45f);
-            attachEulerAngles = Vector3.zero;
+            // Scalpel: pencil grip along upper handle pointing tip slightly forward-down
+            if (ext.y >= ext.x && ext.y >= ext.z)
+            {
+                attachPositionOffset = new Vector3(c.x, c.y, c.z);
+                attachEulerAngles = new Vector3(90.0f, 0.0f, 0.0f);
+            }
+            else if (ext.x >= ext.y && ext.x >= ext.z)
+            {
+                attachPositionOffset = c;
+                attachEulerAngles = new Vector3(0.0f, 90.0f, 0.0f);
+            }
+            else
+            {
+                attachPositionOffset = c;
+                attachEulerAngles = Vector3.zero;
+            }
         }
 
         handAttachPoint.localPosition = attachPositionOffset;
@@ -454,20 +545,25 @@ public class ToolItem : MonoBehaviour
 
     private void OnGrabbed(SelectEnterEventArgs args)
     {
+        hasCountedCurrentReleaseDrop = false;
+
         if (!isBeingRejected)
         {
             CancelDropTimer();
         }
 
-        bool isForceps = GetComponent<ForcepsController>() != null || 
-                         (!string.IsNullOrEmpty(toolID) && toolID.ToLower().Contains("forceps")) || 
-                         gameObject.name.ToLower().Contains("forceps");
+        if (isLockedOnTable2 && TablePrepManager.Instance != null)
+        {
+            TablePrepManager.Instance.NotifyToolPickedUp(this);
+            isLockedOnTable2 = false;
+        }
 
-        // Keep forceps kinematic while held to guarantee zero physics wobble/deflection in hand
+        // Keep all instruments kinematic while held (matches Forceps stability)
         if (rb != null)
         {
-            if (isForceps)
+            if (UsesRigidInstrumentGrip())
             {
+                SafeResetVelocity(rb);
                 rb.isKinematic = true;
             }
             else
@@ -561,6 +657,23 @@ public class ToolItem : MonoBehaviour
         dropCo = StartCoroutine(DropTimerRoutine());
     }
 
+    private void Update()
+    {
+        // Floor safety catch: penalize once per release if an unheld instrument falls below table/floor height
+        if (!IsBeingHeld && !isBeingRejected && !hasCountedCurrentReleaseDrop && transform.position.y < 0.25f)
+        {
+            if (dropCo != null)
+            {
+                StopCoroutine(dropCo);
+                dropCo = null;
+            }
+
+            RecordDropEpisodeIfNeeded();
+            if (isLockedOnTable2) WarpToTable2();
+            else WarpHome();
+        }
+    }
+
     private void CancelDropTimer()
     {
         if (dropCo != null)
@@ -570,19 +683,27 @@ public class ToolItem : MonoBehaviour
         }
     }
 
+    private void RecordDropEpisodeIfNeeded()
+    {
+        if (hasCountedCurrentReleaseDrop) return;
+        hasCountedCurrentReleaseDrop = true;
+
+        if (VRDemoGameManager.Instance != null)
+        {
+            string display = VRDemoGameManager.NormalizeToolDisplayName(toolID);
+            VRDemoGameManager.Instance.RecordDropPenalty(toolID, $"Sterile Violation: {display} dropped! Return instruments to the sterile tray.");
+        }
+    }
+
     /// <summary>
-    /// Lets the tool drop/fall under gravity for 1.2s, then applies drop penalty and snaps it back to its table slot.
+    /// Lets the tool drop/fall under gravity for 1.2s, then applies drop penalty once per release and snaps it back to its table slot.
     /// </summary>
     private IEnumerator DropTimerRoutine()
     {
         yield return new WaitForSeconds(1.2f);
-        if (grab != null && !grab.isSelected && !isBeingRejected)
+        if ((grab == null || !grab.isSelected) && !isBeingRejected)
         {
-            // Dropped outside valid table socket -> Record contamination penalty
-            if (VRDemoGameManager.Instance != null)
-            {
-                VRDemoGameManager.Instance.RecordDropPenalty(toolID, $"Sterile Violation: {toolID} dropped! Return instruments to the sterile tray.");
-            }
+            RecordDropEpisodeIfNeeded();
 
             if (isLockedOnTable2)
             {
@@ -601,6 +722,7 @@ public class ToolItem : MonoBehaviour
     public void MarkCorrect(Vector3 slotPos, Quaternion slotRot)
     {
         CancelDropTimer();
+        hasCountedCurrentReleaseDrop = false;
 
         // Stop any running reject coroutine so it can't re-tint or warp after this
         if (rejectCo != null)
@@ -614,15 +736,23 @@ public class ToolItem : MonoBehaviour
         table2Pos = slotPos;
         table2Rot = slotRot;
 
-        // Lock kinematic on Table 2 so it won't move when player gets near
+        transform.SetPositionAndRotation(slotPos, slotRot);
+
+        // Lock kinematic on Table 2 and sync Rigidbody cleanly so it cannot drift or stand vertically
         if (rb != null)
         {
             SafeResetVelocity(rb);
+            rb.useGravity = false;
             rb.isKinematic = true;
+            rb.interpolation = RigidbodyInterpolation.None;
+            rb.position = slotPos;
+            rb.rotation = slotRot;
         }
 
         if (homeScale.sqrMagnitude > 0.000001f)
             transform.localScale = homeScale;
+
+        Physics.SyncTransforms();
 
         // Re-enable grab in case a reject coroutine disabled it
         if (grab != null)

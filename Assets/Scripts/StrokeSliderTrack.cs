@@ -5,7 +5,8 @@ public enum SliderVisualState
     Active,
     Upcoming,
     Completed,
-    Mistake
+    Mistake,
+    Dimmed
 }
 
 /// <summary>
@@ -58,6 +59,8 @@ public class StrokeSliderTrack : MonoBehaviour
     public float activeBeamWidth = 0.0045f;
     public Color blueprintColor = new Color(0.28f, 0.88f, 1.0f, 0.28f);
     public Color activeGlowColor = new Color(0.22f, 0.94f, 1.0f, 0.95f);
+    public Color hintGoldColor = new Color(1.0f, 0.82f, 0.16f, 1.0f);
+    public Color hintAmberColor = new Color(1.0f, 0.58f, 0.08f, 0.92f);
 
     [Header("Editor Display Settings")]
     [Tooltip("When true in Edit Mode, displays the slider gizmos and holographic reticles in Scene View for easy positioning.")]
@@ -596,11 +599,14 @@ public class StrokeSliderTrack : MonoBehaviour
     }
 
     public SliderVisualState CurrentVisualState { get; private set; } = (SliderVisualState)(-1);
+    private bool isShowingHintTracer = false;
+    public bool IsShowingHintTracer => isShowingHintTracer;
 
     /// <summary>
     /// Sets the visual presentation according to the slider's state:
     /// - Upcoming: Subtle semi-transparent holographic blueprint (hollow cyan reticles + dashed line).
     /// - Active: Bright glowing cyan beam & reticles (when actively wiping or after 3 mistakes).
+    /// - Dimmed: Low-opacity blueprint (~10%) while another zone displays the warm-gold remedial hint.
     /// - Completed: Hidden (replaced by Betadine puddle).
     /// </summary>
     public void SetVisualState(SliderVisualState state, bool force = false)
@@ -608,6 +614,8 @@ public class StrokeSliderTrack : MonoBehaviour
         EnsureHolographicVisuals();
         if (!force && CurrentVisualState == state) return;
         CurrentVisualState = state;
+        isShowingHintTracer = false;
+        RestoreBaseRingAppearance();
 
         switch (state)
         {
@@ -615,6 +623,7 @@ public class StrokeSliderTrack : MonoBehaviour
                 if (directionArrow != null) directionArrow.SetActive(false);
                 if (trackLine != null)
                 {
+                    if (s_dashedBlueprintMat != null) trackLine.sharedMaterial = s_dashedBlueprintMat;
                     trackLine.startWidth = blueprintLineWidth * 1.25f;
                     trackLine.endWidth = blueprintLineWidth * 1.25f;
                     Color cLine = new Color(activeGlowColor.r, activeGlowColor.g, activeGlowColor.b, 0.72f);
@@ -641,6 +650,7 @@ public class StrokeSliderTrack : MonoBehaviour
                 if (directionArrow != null) directionArrow.SetActive(false);
                 if (trackLine != null)
                 {
+                    if (s_dashedBlueprintMat != null) trackLine.sharedMaterial = s_dashedBlueprintMat;
                     trackLine.startWidth = blueprintLineWidth;
                     trackLine.endWidth = blueprintLineWidth;
                     trackLine.startColor = blueprintColor;
@@ -652,47 +662,124 @@ public class StrokeSliderTrack : MonoBehaviour
                 );
                 break;
 
+            case SliderVisualState.Dimmed:
+                if (fillLine != null) fillLine.enabled = false;
+                if (handleBead != null) handleBead.SetActive(false);
+                if (directionArrow != null) directionArrow.SetActive(false);
+                if (trackLine != null)
+                {
+                    if (s_dashedBlueprintMat != null) trackLine.sharedMaterial = s_dashedBlueprintMat;
+                    trackLine.startWidth = blueprintLineWidth * 0.75f;
+                    trackLine.endWidth = blueprintLineWidth * 0.75f;
+                    Color dimLine = new Color(blueprintColor.r, blueprintColor.g, blueprintColor.b, 0.08f);
+                    trackLine.startColor = dimLine;
+                    trackLine.endColor = dimLine;
+                }
+                SetReticleColors(
+                    new Color(blueprintColor.r, blueprintColor.g, blueprintColor.b, 0.11f),
+                    new Color(blueprintColor.r, blueprintColor.g, blueprintColor.b, 0.06f)
+                );
+                break;
+
             case SliderVisualState.Completed:
                 SetVisualElementsVisible(false);
                 break;
 
             case SliderVisualState.Mistake:
-                Color errCol = new Color(1.0f, 0.25f, 0.25f, 0.90f);
+                if (fillLine != null) fillLine.enabled = false;
+                if (handleBead != null) handleBead.SetActive(false);
+                Color errCol = new Color(1.0f, 0.25f, 0.25f, 0.92f);
                 if (trackLine != null)
                 {
-                    trackLine.startWidth = blueprintLineWidth * 1.3f;
-                    trackLine.endWidth = blueprintLineWidth * 1.3f;
+                    if (s_solidGlowMat != null) trackLine.sharedMaterial = s_solidGlowMat;
+                    trackLine.startWidth = blueprintLineWidth * 1.55f;
+                    trackLine.endWidth = blueprintLineWidth * 1.55f;
                     trackLine.startColor = errCol;
                     trackLine.endColor = errCol;
                 }
-                SetReticleColors(errCol, new Color(1f, 0.4f, 0.4f, 0.65f));
+                SetReticleColors(errCol, new Color(1f, 0.4f, 0.4f, 0.72f));
                 break;
         }
     }
 
     /// <summary>
-    /// Animates a rhythmic breathing cyan glow/pulse on this stroke when the player has made 3 mistakes.
+    /// Animates a high-visibility Warm Gold breathing beacon and directional bead tracer on this stroke
+    /// after 3 mistakes so the target zone stands out clearly against dimmed non-target tracks.
     /// </summary>
     public void UpdatePulseHint(float time)
     {
-        float wave = 0.5f + 0.5f * Mathf.Sin(time * 5.2f);
-        float outerAlpha = Mathf.Lerp(0.45f, 1.0f, wave);
-        float innerAlpha = Mathf.Lerp(0.30f, 0.85f, wave);
-        float lineAlpha = Mathf.Lerp(0.35f, 0.92f, wave);
+        EnsureHolographicVisuals();
+        isShowingHintTracer = true;
 
-        Color outerC = new Color(activeGlowColor.r, activeGlowColor.g, activeGlowColor.b, outerAlpha);
-        Color innerC = new Color(activeGlowColor.r, activeGlowColor.g, activeGlowColor.b, innerAlpha);
+        float wave = 0.5f + 0.5f * Mathf.Sin(time * 5.8f);
+        Color primaryGold = Color.Lerp(hintAmberColor, hintGoldColor, wave);
+        Color innerGold = Color.Lerp(hintGoldColor, Color.white, 0.35f * wave);
+
+        Color outerC = new Color(primaryGold.r, primaryGold.g, primaryGold.b, Mathf.Lerp(0.75f, 1.0f, wave));
+        Color innerC = new Color(innerGold.r, innerGold.g, innerGold.b, Mathf.Lerp(0.60f, 0.95f, wave));
         SetReticleColors(outerC, innerC);
+
+        float outerScale = isTapOnly ? Mathf.Lerp(1.02f, 1.42f, wave) : Mathf.Lerp(1.05f, 1.28f, wave);
+        float startBiasScale = isBidirectional ? outerScale : outerScale * 1.08f;
+        float ringWidth = reticleLineWidth * Mathf.Lerp(1.35f, 1.95f, wave);
+
+        ApplyHintRingTransform(startOuterRing, startBiasScale, ringWidth);
+        ApplyHintRingTransform(startInnerRing, Mathf.Lerp(1.0f, 1.20f, 1f - wave), ringWidth * 0.85f);
+        ApplyHintRingTransform(endOuterRing, outerScale, ringWidth * (isBidirectional ? 1.0f : 0.90f));
+        ApplyHintRingTransform(endInnerRing, Mathf.Lerp(1.0f, 1.15f, wave), ringWidth * 0.78f);
+
+        if (isTapOnly)
+        {
+            if (handleBead != null) handleBead.SetActive(false);
+            return;
+        }
 
         if (trackLine != null)
         {
-            Color lc = new Color(activeGlowColor.r, activeGlowColor.g, activeGlowColor.b, lineAlpha);
+            if (s_solidGlowMat != null) trackLine.sharedMaterial = s_solidGlowMat;
+            Color lc = new Color(primaryGold.r, primaryGold.g, primaryGold.b, Mathf.Lerp(0.68f, 1.0f, wave));
             trackLine.startColor = lc;
             trackLine.endColor = lc;
-            float w = Mathf.Lerp(blueprintLineWidth, blueprintLineWidth * 1.55f, wave);
+            float w = Mathf.Lerp(blueprintLineWidth * 1.85f, blueprintLineWidth * 2.85f, wave);
             trackLine.startWidth = w;
             trackLine.endWidth = w;
         }
+
+        if (handleBead != null)
+        {
+            if (!handleBead.activeSelf) handleBead.SetActive(true);
+            float tracerT = isBidirectional
+                ? Mathf.PingPong(time * 0.85f, 1.0f)
+                : Mathf.Repeat(time * 0.90f, 1.0f);
+            Vector3 tracerPos = Vector3.Lerp(GetStartWorldPosition(), GetEndWorldPosition(), tracerT);
+            handleBead.transform.position = tracerPos;
+
+            if (handleRing != null)
+            {
+                handleRing.startColor = innerGold;
+                handleRing.endColor = innerGold;
+                handleRing.startWidth = reticleLineWidth * 1.55f;
+                handleRing.endWidth = reticleLineWidth * 1.55f;
+                handleRing.transform.localScale = Vector3.one * 1.22f;
+            }
+        }
+    }
+
+    private static void ApplyHintRingTransform(LineRenderer lr, float scale, float width)
+    {
+        if (lr == null) return;
+        lr.transform.localScale = Vector3.one * scale;
+        lr.startWidth = width;
+        lr.endWidth = width;
+    }
+
+    private void RestoreBaseRingAppearance()
+    {
+        ApplyHintRingTransform(startOuterRing, 1f, reticleLineWidth);
+        ApplyHintRingTransform(startInnerRing, 1f, reticleLineWidth * 0.78f);
+        ApplyHintRingTransform(endOuterRing, 1f, reticleLineWidth);
+        ApplyHintRingTransform(endInnerRing, 1f, reticleLineWidth * 0.78f);
+        ApplyHintRingTransform(handleRing, 1f, reticleLineWidth * 1.1f);
     }
 
     private void SetReticleColors(Color outerColor, Color innerColor)
@@ -754,8 +841,19 @@ public class StrokeSliderTrack : MonoBehaviour
 
         if (handleBead != null)
         {
-            handleBead.SetActive(isWiping && !isTapOnly);
-            handleBead.transform.position = handlePos;
+            bool showActiveBead = (isWiping && !isTapOnly) || isShowingHintTracer;
+            handleBead.SetActive(showActiveBead);
+            if (isWiping && !isTapOnly)
+            {
+                isShowingHintTracer = false;
+                RestoreBaseRingAppearance();
+                if (handleRing != null)
+                {
+                    handleRing.startColor = activeGlowColor;
+                    handleRing.endColor = activeGlowColor;
+                }
+                handleBead.transform.position = handlePos;
+            }
 
             if (sparkleParticles != null)
             {
@@ -768,6 +866,9 @@ public class StrokeSliderTrack : MonoBehaviour
     public void ResetProgress()
     {
         isReverseFill = false;
+        isShowingHintTracer = false;
+        CurrentVisualState = (SliderVisualState)(-1);
+        RestoreBaseRingAppearance();
         Vector3 startPos = GetStartWorldPosition();
 
         if (fillLine != null)

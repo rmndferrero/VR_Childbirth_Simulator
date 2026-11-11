@@ -114,6 +114,217 @@ public class TablePrepSlot : MonoBehaviour
         return root.rotation * Quaternion.Euler(snapEulerAngles);
     }
 
+    [System.Serializable]
+    public struct PerToolSnapReference
+    {
+        public string toolID;
+        public Transform referenceTransform;
+        public Vector3 positionOffset;
+        public Vector3 eulerAngles;
+        public bool useLocalRotation;
+    }
+
+    [Header("Per-Tool Snap References (Multi-Tool / Blind Slotting)")]
+    [SerializeField] private System.Collections.Generic.List<PerToolSnapReference> perToolReferences = new System.Collections.Generic.List<PerToolSnapReference>();
+
+    /// <summary>
+    /// Resolves the target world position and rotation for the supplied instrument:
+    /// 1) Explicit perToolReferences entry, 2) User-placed duplicate child inside this slot,
+    /// 3) Cross-slot home pose fallback for assigned instruments without a local duplicate,
+    /// 4) Slot/tray-flat fallback.
+    /// </summary>
+    public void GetTargetSnapPose(ToolItem tool, out Vector3 snapPos, out Quaternion snapRot)
+    {
+        GetTargetSnapPoseInternal(tool, out snapPos, out snapRot, true);
+    }
+
+    private void GetTargetSnapPoseInternal(ToolItem tool, out Vector3 snapPos, out Quaternion snapRot, bool allowCrossSlotLookup)
+    {
+        if (tool != null && perToolReferences != null)
+        {
+            for (int i = 0; i < perToolReferences.Count; i++)
+            {
+                PerToolSnapReference entry = perToolReferences[i];
+                if (!DoesToolMatchIdentifier(tool, entry.toolID)) continue;
+
+                if (entry.referenceTransform != null)
+                {
+                    snapPos = entry.referenceTransform.position;
+                    snapRot = entry.referenceTransform.rotation;
+                    return;
+                }
+
+                Transform refRoot = snapTransform != null ? snapTransform : transform;
+                snapPos = refRoot.position + refRoot.TransformDirection(entry.positionOffset);
+                snapRot = entry.useLocalRotation
+                    ? refRoot.rotation * Quaternion.Euler(entry.eulerAngles)
+                    : Quaternion.Euler(entry.eulerAngles);
+                return;
+            }
+        }
+
+        Transform childRef = FindReferenceChildForTool(tool);
+        if (childRef != null)
+        {
+            snapPos = childRef.position;
+            snapRot = childRef.rotation;
+            return;
+        }
+
+        if (allowCrossSlotLookup && tool != null)
+        {
+            TablePrepSlot homeSlot = FindHomeSlotForTool(tool);
+            if (homeSlot != null && homeSlot != this)
+            {
+                homeSlot.GetTargetSnapPoseInternal(tool, out Vector3 homePos, out Quaternion homeRot, false);
+                Transform homeRoot = homeSlot.snapTransform != null ? homeSlot.snapTransform : homeSlot.transform;
+                Transform destRoot = snapTransform != null ? snapTransform : transform;
+                Quaternion homeRotInv = Quaternion.Inverse(homeRoot.rotation);
+                Vector3 relOffset = homeRotInv * (homePos - homeRoot.position);
+                Quaternion relRot = homeRotInv * homeRot;
+                snapPos = destRoot.position + destRoot.rotation * relOffset;
+                snapRot = destRoot.rotation * relRot;
+                return;
+            }
+        }
+
+        if (tool == null || DoesToolMatchSlotAssignment(tool))
+        {
+            snapPos = GetTargetSnapPosition();
+            snapRot = GetTargetSnapRotation();
+            return;
+        }
+
+        Transform fallbackRoot = snapTransform != null ? snapTransform : transform;
+        snapPos = fallbackRoot.position;
+        snapRot = fallbackRoot.rotation;
+    }
+
+    private Transform FindReferenceChildForTool(ToolItem tool)
+    {
+        if (tool == null) return null;
+
+        string targetKey = CanonicalizeToolKey(tool.toolID);
+        string fallbackNameKey = CanonicalizeToolKey(tool.gameObject.name);
+        if (string.IsNullOrEmpty(targetKey) && string.IsNullOrEmpty(fallbackNameKey)) return null;
+
+        Transform bestMatch = null;
+        Transform[] descendants = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < descendants.Length; i++)
+        {
+            Transform child = descendants[i];
+            if (child == null || child == transform || child == customSnapPoint) continue;
+            if (ghostPlateObject != null && (child == ghostPlateObject.transform || child.IsChildOf(ghostPlateObject.transform))) continue;
+            if (child == tool.transform || child.IsChildOf(tool.transform)) continue;
+            if (child.parent != transform && child.parent != snapTransform) continue;
+
+            bool matched = false;
+            ToolItem childTool = child.GetComponent<ToolItem>();
+            if (childTool != null && DoesToolMatchIdentifier(tool, childTool.toolID))
+            {
+                matched = true;
+            }
+            else
+            {
+                string childKey = CanonicalizeToolKey(child.name);
+                if (!string.IsNullOrEmpty(childKey) && (childKey == targetKey || childKey == fallbackNameKey))
+                {
+                    matched = true;
+                }
+            }
+
+            if (!matched) continue;
+
+            // Prefer inactive user-placed duplicate references (m_IsActive: 0).
+            if (!child.gameObject.activeSelf) return child;
+            if (bestMatch == null) bestMatch = child;
+        }
+
+        return bestMatch;
+    }
+
+    private static TablePrepSlot FindHomeSlotForTool(ToolItem tool)
+    {
+        if (tool == null) return null;
+        TablePrepSlot[] allSlots = FindObjectsByType<TablePrepSlot>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < allSlots.Length; i++)
+        {
+            TablePrepSlot candidate = allSlots[i];
+            if (candidate != null && candidate.CanAccept(tool))
+            {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private bool DoesToolMatchSlotAssignment(ToolItem tool)
+    {
+        if (tool == null) return false;
+        if (assignedTool != null && tool == assignedTool) return true;
+        return DoesToolMatchIdentifier(tool, assignedToolID);
+    }
+
+    private static bool DoesToolMatchIdentifier(ToolItem tool, string identifier)
+    {
+        if (tool == null || string.IsNullOrEmpty(identifier)) return false;
+        string expectedKey = CanonicalizeToolKey(identifier);
+        if (string.IsNullOrEmpty(expectedKey)) return false;
+
+        string toolIdKey = CanonicalizeToolKey(tool.toolID);
+        if (!string.IsNullOrEmpty(toolIdKey) && toolIdKey == expectedKey) return true;
+
+        string toolNameKey = CanonicalizeToolKey(tool.gameObject.name);
+        return !string.IsNullOrEmpty(toolNameKey) && toolNameKey == expectedKey;
+    }
+
+    /// <summary>
+    /// Maps slot identifiers and user-duplicated reference names (e.g. "gauze (1)", "KidneyBasin_01")
+    /// to canonical instrument keys without false matches across distinct forceps/scissors.
+    /// </summary>
+    public static string CanonicalizeToolKey(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+
+        string trimmed = raw.Trim();
+        int openParen = trimmed.LastIndexOf('(');
+        if (openParen > 0 && trimmed.EndsWith(")"))
+        {
+            string inner = trimmed.Substring(openParen + 1, trimmed.Length - openParen - 2).Trim();
+            if (int.TryParse(inner, out _))
+            {
+                trimmed = trimmed.Substring(0, openParen).Trim();
+            }
+        }
+
+        string compact = trimmed.ToLowerInvariant().Replace("_", "").Replace("-", "").Replace(" ", "");
+        switch (compact)
+        {
+            case "forceps":
+            case "arteryforcep":
+            case "arteryforceps":
+                return "artery_forceps";
+            case "umbiclamp":
+            case "umbiclamp01":
+                return "umbi_clamp";
+            case "scissor":
+            case "scissors":
+            case "spongeforcep":
+            case "spongeforceps":
+                return "sponge_forceps";
+            case "kidneybasin":
+            case "kidneybasin01":
+                return "kidney_basin";
+            case "straightcatheter":
+                return "straight_catheter";
+            case "gauze":
+            case "gauzepack":
+                return "gauze_pack";
+            default:
+                return compact;
+        }
+    }
+
     public void CreateGhostPlateIfNull()
     {
         if (ghostPlateObject != null) return;
@@ -178,18 +389,12 @@ public class TablePrepSlot : MonoBehaviour
     public bool CanAccept(ToolItem tool)
     {
         if (tool == null) return false;
-        if (assignedTool != null && tool == assignedTool) return true;
-        if (!string.IsNullOrEmpty(assignedToolID) && assignedToolID.Equals(tool.toolID, System.StringComparison.OrdinalIgnoreCase)) return true;
+        if (tool.GetComponent<TwoHandedLinenCloth>() != null) return false;
+        if (assignedTool != null) return tool == assignedTool;
 
-        // Forceps compatibility: Accept Handling Forceps, TongueForceps, and Thumb_Forceps for forceps slots
-        string slotId = (assignedToolID ?? "").ToLower();
-        string toolId = (tool.toolID ?? "").ToLower();
-        string toolName = tool.gameObject.name.ToLower();
-
-        if ((slotId.Contains("forceps") || slotId.Contains("forcep")) &&
-            (toolId.Contains("forceps") || toolId.Contains("forcep") || toolName.Contains("forceps")))
+        if (!string.IsNullOrEmpty(assignedToolID))
         {
-            return true;
+            return string.Equals(assignedToolID.Trim(), (tool.toolID ?? string.Empty).Trim(), System.StringComparison.OrdinalIgnoreCase);
         }
 
         return false;
@@ -219,9 +424,9 @@ public class TablePrepSlot : MonoBehaviour
         currentPlacedTool = tool;
         HideGhost();
 
-        Vector3 snapPos = GetTargetSnapPosition();
-        Quaternion snapRot = GetTargetSnapRotation();
+        GetTargetSnapPose(tool, out Vector3 snapPos, out Quaternion snapRot);
 
+        tool.RestoreColors();
         tool.transform.position = snapPos;
         tool.transform.rotation = snapRot;
         tool.transform.localScale = tool.HomeScale;

@@ -42,11 +42,25 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
 
     private Camera targetCamera;
 
-    // Red Vignette Components
-    private GameObject vignetteCanvasObj;
-    private CanvasGroup vignetteCanvasGroup;
-    private Image vignetteImage;
+    // Red Vignette Overlay Components (Single-Pass Instanced URP Stereo Shader Quad)
+    private GameObject vignetteOverlayObj;
+    private MeshFilter vignetteMeshFilter;
+    private MeshRenderer vignetteMeshRenderer;
+    private Mesh vignetteMesh;
+    private Material vignetteMaterial;
+    private bool usingCustomVignetteShader;
     private Coroutine vignetteCoroutine;
+    private float currentVignetteIntensity = 0f;
+    private float lastVignetteFlashTime = -99f;
+    private const float VignetteOverlayDistance = 0.25f;
+    private const float VignetteMinRetriggerInterval = 0.15f;
+
+    private static readonly int ColorShaderId = Shader.PropertyToID("_Color");
+    private static readonly int IntensityShaderId = Shader.PropertyToID("_Intensity");
+    private static readonly int InnerRadiusShaderId = Shader.PropertyToID("_InnerRadius");
+    private static readonly int OuterRadiusShaderId = Shader.PropertyToID("_OuterRadius");
+    private static readonly int SoftnessShaderId = Shader.PropertyToID("_Softness");
+    private static readonly Color VignetteTintColor = new Color(0.88f, 0.015f, 0.015f, 0.78f);
 
     // In-Face HUD Components
     private GameObject hudCanvasObj;
@@ -88,35 +102,141 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         EnsureInFaceHUDExists();
     }
 
+    private void OnEnable()
+    {
+        EvaluationLogger.Instance.OnEventLogged -= HandleEvaluationEventLogged;
+        EvaluationLogger.Instance.OnEventLogged += HandleEvaluationEventLogged;
+    }
+
+    private void OnDisable()
+    {
+        EvaluationLogger.Instance.OnEventLogged -= HandleEvaluationEventLogged;
+    }
+
+    private void OnDestroy()
+    {
+        EvaluationLogger.Instance.OnEventLogged -= HandleEvaluationEventLogged;
+        if (Instance == this) Instance = null;
+
+        if (vignetteMaterial != null)
+        {
+            if (Application.isPlaying) Destroy(vignetteMaterial);
+            else DestroyImmediate(vignetteMaterial);
+            vignetteMaterial = null;
+        }
+
+        if (vignetteMesh != null)
+        {
+            if (Application.isPlaying) Destroy(vignetteMesh);
+            else DestroyImmediate(vignetteMesh);
+            vignetteMesh = null;
+        }
+    }
+
+    private void HandleEvaluationEventLogged(EvaluationEvent e)
+    {
+        if (e == null || e.isCorrect) return;
+        float duration = e.severity == MistakeSeverity.Severe ? 1.45f : 1.15f;
+        FlashRedVignette(duration);
+    }
+
     private void Start()
     {
-        targetCamera = Camera.main;
+        ResolveActiveCamera();
         EnsureVignetteOverlayExists();
         EnsureInFaceHUDExists();
     }
 
     private void LateUpdate()
     {
-        if (targetCamera == null) targetCamera = Camera.main;
-        if (targetCamera == null) return;
+        Camera cam = ResolveActiveCamera();
+        if (cam == null) return;
 
         // Position In-Face HUD directly in front of the player's view
         if (hudCanvasObj != null && hudCanvasGroup != null && hudCanvasGroup.alpha > 0.001f)
         {
-            Vector3 targetPos = targetCamera.transform.position + targetCamera.transform.forward * hudDistance + targetCamera.transform.up * hudHeightOffset;
-            hudCanvasObj.transform.position = Vector3.Lerp(hudCanvasObj.transform.position, targetPos, Time.deltaTime * 14f);
-            hudCanvasObj.transform.rotation = Quaternion.LookRotation(hudCanvasObj.transform.position - targetCamera.transform.position);
+            Vector3 targetPos = cam.transform.position + cam.transform.forward * hudDistance + cam.transform.up * hudHeightOffset;
+            hudCanvasObj.transform.position = Vector3.Lerp(hudCanvasObj.transform.position, targetPos, Time.unscaledDeltaTime * 14f);
+            hudCanvasObj.transform.rotation = Quaternion.LookRotation(hudCanvasObj.transform.position - cam.transform.position);
         }
 
-        // Keep Vignette locked directly to camera orientation
-        if (vignetteCanvasObj != null)
+        // Keep Vignette overlay parented to the active stereo VR camera
+        UpdateVignetteOverlayTransform();
+    }
+
+    private Camera ResolveActiveCamera()
+    {
+        if (targetCamera != null && targetCamera.isActiveAndEnabled && targetCamera.gameObject.activeInHierarchy)
         {
-            if (vignetteCanvasObj.transform.parent != targetCamera.transform)
+            return targetCamera;
+        }
+
+        Camera mainCam = Camera.main;
+        if (mainCam != null && mainCam.isActiveAndEnabled && mainCam.gameObject.activeInHierarchy)
+        {
+            targetCamera = mainCam;
+            return targetCamera;
+        }
+
+        Camera[] allCameras = Camera.allCameras;
+        Camera fallbackGameCam = null;
+        for (int i = 0; i < allCameras.Length; i++)
+        {
+            Camera cam = allCameras[i];
+            if (cam == null || !cam.isActiveAndEnabled || !cam.gameObject.activeInHierarchy) continue;
+            if (cam.cameraType != CameraType.Game) continue;
+            if (cam.stereoTargetEye != StereoTargetEyeMask.None)
             {
-                vignetteCanvasObj.transform.SetParent(targetCamera.transform, false);
+                targetCamera = cam;
+                return targetCamera;
             }
-            vignetteCanvasObj.transform.localPosition = new Vector3(0f, 0f, 0.12f);
-            vignetteCanvasObj.transform.localRotation = Quaternion.identity;
+            if (fallbackGameCam == null) fallbackGameCam = cam;
+        }
+
+        if (fallbackGameCam != null)
+        {
+            targetCamera = fallbackGameCam;
+        }
+
+        return targetCamera;
+    }
+
+    private void UpdateVignetteOverlayTransform()
+    {
+        Camera cam = ResolveActiveCamera();
+        if (vignetteOverlayObj == null || cam == null) return;
+
+        if (vignetteOverlayObj.transform.parent != cam.transform)
+        {
+            vignetteOverlayObj.transform.SetParent(cam.transform, false);
+        }
+
+        vignetteOverlayObj.transform.localPosition = new Vector3(0f, 0f, VignetteOverlayDistance);
+        vignetteOverlayObj.transform.localRotation = Quaternion.identity;
+        vignetteOverlayObj.transform.localScale = Vector3.one;
+
+        EnsureOverlayLayerVisibleToCamera(cam);
+    }
+
+    private void EnsureOverlayLayerVisibleToCamera(Camera cam)
+    {
+        if (vignetteOverlayObj == null || cam == null) return;
+        int mask = cam.cullingMask;
+        if ((mask & (1 << vignetteOverlayObj.layer)) != 0) return;
+
+        if ((mask & 1) != 0)
+        {
+            vignetteOverlayObj.layer = 0;
+            return;
+        }
+
+        for (int bit = 0; bit < 32; bit++)
+        {
+            if ((mask & (1 << bit)) != 0)
+            {
+                vignetteOverlayObj.layer = bit;
+                return;
+            }
         }
     }
 
@@ -134,11 +254,11 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
             ? $"Talk to the mother and obtain informed consent before handling instruments ({cleanName})."
             : string.Format(step1WarningSubtitle, cleanName);
 
-        FlashRedVignette(1.8f);
+        if (VRDemoGameManager.Instance == null) FlashRedVignette(1.45f);
         ShowInFaceHUD(title, subtitle, new Color(0.95f, 0.20f, 0.20f, 1f), 3.0f);
 
         // Scoring is done once by the caller (ToolItem -> RecordViolation(Tool_Handled_Before_Consent));
-        // this method only gives the vignette / HUD / audio / haptic feedback.
+        // this method only gives HUD / audio / haptic feedback while EvaluationLogger triggers the vignette.
 
         PlayWarningAudio();
         SendHapticsToControllers(0.6f, 0.35f);
@@ -159,7 +279,6 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
         string title = "Sterile Field Breach!";
         string subtitle = $"Drape the Mayo Stand with sterile linen before setting up instruments ({cleanName}).";
 
-        FlashRedVignette(1.8f);
         ShowInFaceHUD(title, subtitle, new Color(0.95f, 0.20f, 0.20f, 1f), 3.2f);
 
         if (VRDemoGameManager.Instance != null)
@@ -169,68 +288,119 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
                 $"Placed '{cleanName}' on un-draped Mayo Stand"
             );
         }
+        else
+        {
+            FlashRedVignette(1.45f);
+        }
 
         PlayWarningAudio();
         SendHapticsToControllers(0.7f, 0.4f);
     }
 
-    /// <summary>
-    /// Flashes the red vignette around the perimeter of the player's VR field of view.
-    /// </summary>
-    public void FlashRedVignette(float duration = 1.6f)
+    [ContextMenu("Test Red Vignette Flash")]
+    public void TestRedVignetteFlash()
     {
-        EnsureVignetteOverlayExists();
-        if (vignetteCoroutine != null) StopCoroutine(vignetteCoroutine);
-        vignetteCoroutine = StartCoroutine(RedVignetteRoutine(duration));
+        TriggerMistakeFlash(1.25f);
     }
 
     /// <summary>
-    /// Flashes the POV red vignette border, plays warning buzzer audio, and pulses controller haptics on clinical mistakes.
+    /// Smoothly pulses a crimson border vignette around the perimeter of the player's VR field of view.
     /// </summary>
-    public void TriggerMistakeFlash(float duration = 1.2f)
+    public void FlashRedVignette(float duration = 1.15f)
+    {
+        if (vignetteCoroutine != null && Time.unscaledTime - lastVignetteFlashTime < VignetteMinRetriggerInterval)
+        {
+            return;
+        }
+
+        lastVignetteFlashTime = Time.unscaledTime;
+        EnsureVignetteOverlayExists();
+        UpdateVignetteOverlayTransform();
+        if (vignetteCoroutine != null) StopCoroutine(vignetteCoroutine);
+        vignetteCoroutine = StartCoroutine(RedVignetteRoutine(Mathf.Max(0.85f, duration)));
+    }
+
+    /// <summary>
+    /// Triggers warning buzzer audio and controller haptics (and red vignette).
+    /// </summary>
+    public void TriggerMistakeFlash(float duration = 1.15f)
     {
         FlashRedVignette(duration);
+        PlayFeedbackCuesOnly();
+    }
+
+    public void PlayFeedbackCuesOnly(float hapticAmplitude = 0.55f, float hapticDuration = 0.28f)
+    {
         PlayWarningAudio();
-        SendHapticsToControllers(0.6f, 0.35f);
+        SendHapticsToControllers(hapticAmplitude, hapticDuration);
     }
 
     private IEnumerator RedVignetteRoutine(float duration)
     {
-        if (vignetteCanvasGroup == null) yield break;
+        if (vignetteMaterial == null || vignetteMeshRenderer == null) yield break;
 
-        // Pulse in
+        const float inDuration = 0.14f;
+        const float outDuration = 0.50f;
+        float holdDuration = Mathf.Max(0.20f, duration - inDuration - outDuration);
+
+        // Smooth ease-in from current intensity using unscaled time
+        float startIntensity = currentVignetteIntensity;
         float elapsed = 0f;
-        float inDuration = 0.2f;
         while (elapsed < inDuration)
         {
-            elapsed += Time.deltaTime;
-            vignetteCanvasGroup.alpha = Mathf.Lerp(0f, 0.85f, elapsed / inDuration);
+            float dt = Time.unscaledDeltaTime > 0.0001f ? Time.unscaledDeltaTime : 0.02f;
+            elapsed += dt;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / inDuration));
+            ApplyVignetteIntensity(Mathf.Lerp(startIntensity, 1f, t));
             yield return null;
         }
 
-        // Pulse heartbeat effect while active
-        float stayElapsed = 0f;
-        float stayDuration = duration - 0.4f;
-        while (stayElapsed < stayDuration)
+        ApplyVignetteIntensity(1f);
+        float holdElapsed = 0f;
+        while (holdElapsed < holdDuration)
         {
-            stayElapsed += Time.deltaTime;
-            float pulse = 0.70f + Mathf.Sin(stayElapsed * 10f) * 0.15f;
-            vignetteCanvasGroup.alpha = pulse;
+            float dt = Time.unscaledDeltaTime > 0.0001f ? Time.unscaledDeltaTime : 0.02f;
+            holdElapsed += dt;
             yield return null;
         }
 
-        // Fade out
         elapsed = 0f;
-        float outDuration = 0.35f;
         while (elapsed < outDuration)
         {
-            elapsed += Time.deltaTime;
-            vignetteCanvasGroup.alpha = Mathf.Lerp(0.70f, 0f, elapsed / outDuration);
+            float dt = Time.unscaledDeltaTime > 0.0001f ? Time.unscaledDeltaTime : 0.02f;
+            elapsed += dt;
+            float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / outDuration));
+            ApplyVignetteIntensity(Mathf.Lerp(1f, 0f, t));
             yield return null;
         }
 
-        vignetteCanvasGroup.alpha = 0f;
+        ApplyVignetteIntensity(0f);
         vignetteCoroutine = null;
+    }
+
+    private void ApplyVignetteIntensity(float normalizedIntensity)
+    {
+        currentVignetteIntensity = Mathf.Clamp01(normalizedIntensity);
+
+        if (vignetteMaterial != null)
+        {
+            if (usingCustomVignetteShader)
+            {
+                vignetteMaterial.SetFloat(IntensityShaderId, currentVignetteIntensity);
+            }
+            else
+            {
+                Color c = VignetteTintColor;
+                c.a = VignetteTintColor.a * currentVignetteIntensity;
+                if (vignetteMaterial.HasProperty("_BaseColor")) vignetteMaterial.SetColor("_BaseColor", c);
+                if (vignetteMaterial.HasProperty("_Color")) vignetteMaterial.SetColor("_Color", c);
+            }
+        }
+
+        if (vignetteMeshRenderer != null)
+        {
+            vignetteMeshRenderer.enabled = currentVignetteIntensity > 0.001f;
+        }
     }
 
     /// <summary>
@@ -302,95 +472,103 @@ public class VRHeadsetVisualFeedback : MonoBehaviour
 
     private void EnsureVignetteOverlayExists()
     {
-        if (vignetteCanvasObj != null) return;
+        if (vignetteOverlayObj != null) return;
 
-        if (targetCamera == null) targetCamera = Camera.main;
+        Camera cam = ResolveActiveCamera();
 
-        vignetteCanvasObj = new GameObject("VR_RedVignette_Overlay");
-        if (targetCamera != null)
+        vignetteOverlayObj = new GameObject("VR_RedVignette_Overlay");
+        if (cam != null)
         {
-            vignetteCanvasObj.transform.SetParent(targetCamera.transform, false);
-            vignetteCanvasObj.transform.localPosition = new Vector3(0f, 0f, 0.12f);
-            vignetteCanvasObj.transform.localRotation = Quaternion.identity;
+            vignetteOverlayObj.transform.SetParent(cam.transform, false);
+            vignetteOverlayObj.transform.localPosition = new Vector3(0f, 0f, VignetteOverlayDistance);
+            vignetteOverlayObj.transform.localRotation = Quaternion.identity;
         }
         else
         {
-            vignetteCanvasObj.transform.SetParent(transform, false);
+            vignetteOverlayObj.transform.SetParent(transform, false);
         }
 
-        var canvas = vignetteCanvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 30000;
-        vignetteCanvasObj.AddComponent<CanvasScaler>();
+        vignetteMesh = CreateVignetteQuadMesh();
+        vignetteMeshFilter = vignetteOverlayObj.AddComponent<MeshFilter>();
+        vignetteMeshFilter.sharedMesh = vignetteMesh;
 
-        vignetteCanvasGroup = vignetteCanvasObj.AddComponent<CanvasGroup>();
-        vignetteCanvasGroup.alpha = 0f;
-        vignetteCanvasGroup.blocksRaycasts = false;
-        vignetteCanvasGroup.interactable = false;
+        vignetteMaterial = CreateVignetteMaterial(out usingCustomVignetteShader);
 
-        var rect = vignetteCanvasObj.GetComponent<RectTransform>();
-        // Massive 3.0m x 3.0m quad at 0.12m distance (>170 deg FOV coverage) guarantees NO box corners or boundaries visible in VR!
-        rect.sizeDelta = new Vector2(3000f, 3000f);
-        rect.localScale = new Vector3(0.001f, 0.001f, 0.001f);
+        vignetteMeshRenderer = vignetteOverlayObj.AddComponent<MeshRenderer>();
+        vignetteMeshRenderer.sharedMaterial = vignetteMaterial;
+        vignetteMeshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        vignetteMeshRenderer.receiveShadows = false;
+        vignetteMeshRenderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+        vignetteMeshRenderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        vignetteMeshRenderer.allowOcclusionWhenDynamic = false;
+        vignetteMeshRenderer.sortingOrder = 32000;
 
-        // Procedural radial vignette image
-        GameObject imgGo = new GameObject("VignetteImage");
-        imgGo.transform.SetParent(vignetteCanvasObj.transform, false);
-        var imgRect = imgGo.AddComponent<RectTransform>();
-        imgRect.anchorMin = Vector2.zero;
-        imgRect.anchorMax = Vector2.one;
-        imgRect.sizeDelta = Vector2.zero;
-
-        vignetteImage = imgGo.AddComponent<Image>();
-        vignetteImage.sprite = CreateVignetteSprite();
-        vignetteImage.color = new Color(0.95f, 0.05f, 0.05f, 1f);
-        vignetteImage.raycastTarget = false;
-
-        var noZTestShader = Shader.Find("UI/NoZTest");
-        if (noZTestShader != null)
-        {
-            vignetteImage.material = new Material(noZTestShader);
-        }
+        ApplyVignetteIntensity(currentVignetteIntensity);
+        UpdateVignetteOverlayTransform();
     }
 
-    private Sprite CreateVignetteSprite()
+    private static Mesh CreateVignetteQuadMesh()
     {
-        int size = 512;
-        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        tex.wrapMode = TextureWrapMode.Clamp;
-        tex.filterMode = FilterMode.Bilinear;
-        Color[] pixels = new Color[size * size];
-        Vector2 center = new Vector2(0.5f, 0.5f);
-
-        for (int y = 0; y < size; y++)
+        var mesh = new Mesh { name = "VR_RedVignette_Quad" };
+        mesh.vertices = new[]
         {
-            for (int x = 0; x < size; x++)
-            {
-                Vector2 uv = new Vector2((x + 0.5f) / size, (y + 0.5f) / size);
-                float d = Vector2.Distance(uv, center) * 2f; // 0 at center, 1 at circle edge, ~1.414 at corners
+            new Vector3(-0.5f, -0.5f, 0f),
+            new Vector3( 0.5f, -0.5f, 0f),
+            new Vector3(-0.5f,  0.5f, 0f),
+            new Vector3( 0.5f,  0.5f, 0f)
+        };
+        mesh.uv = new[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(0f, 1f),
+            new Vector2(1f, 1f)
+        };
+        mesh.triangles = new[] { 0, 2, 1, 2, 3, 1 };
+        // Generous bounds prevent CPU frustum culling across any OpenXR IPD, canted frustum, or nearClipPlane.
+        mesh.bounds = new Bounds(Vector3.zero, new Vector3(4f, 4f, 4f));
+        return mesh;
+    }
 
-                float alpha;
-                if (d < 0.38f)
-                {
-                    alpha = 0f; // Clear central vision
-                }
-                else if (d >= 0.88f)
-                {
-                    alpha = 1f; // 100% solid color across entire outer periphery and corners
-                }
-                else
-                {
-                    float t = (d - 0.38f) / (0.88f - 0.38f);
-                    alpha = Mathf.SmoothStep(0f, 1f, t);
-                }
-
-                pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
-            }
+    private static Material CreateVignetteMaterial(out bool isCustomShader)
+    {
+        Shader customShader = Shader.Find("VRSim/VRHeadsetVignetteOverlay");
+        if (customShader != null)
+        {
+            isCustomShader = true;
+            var mat = new Material(customShader);
+            ConfigureCustomVignetteMaterial(mat);
+            return mat;
         }
 
-        tex.SetPixels(pixels);
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        Material resourceMat = Resources.Load<Material>("VRHeadsetVignetteMat");
+        if (resourceMat != null && resourceMat.shader != null && resourceMat.shader.name == "VRSim/VRHeadsetVignetteOverlay")
+        {
+            isCustomShader = true;
+            var mat = new Material(resourceMat);
+            ConfigureCustomVignetteMaterial(mat);
+            return mat;
+        }
+
+        isCustomShader = false;
+        Shader fallback = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
+        if (fallback != null)
+        {
+            var mat = new Material(fallback);
+            return mat;
+        }
+
+        return null;
+    }
+
+    private static void ConfigureCustomVignetteMaterial(Material mat)
+    {
+        if (mat == null) return;
+        mat.SetColor(ColorShaderId, VignetteTintColor);
+        mat.SetFloat(IntensityShaderId, 0f);
+        mat.SetFloat(InnerRadiusShaderId, 0.44f);
+        mat.SetFloat(OuterRadiusShaderId, 0.86f);
+        mat.SetFloat(SoftnessShaderId, 1.25f);
     }
 
     private void EnsureInFaceHUDExists()

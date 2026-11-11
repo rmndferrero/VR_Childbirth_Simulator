@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections.Generic;
 
@@ -27,14 +28,25 @@ public class PitcherPour : MonoBehaviour
     [Tooltip("Radius around the water stream/hit point where puddles are washed.")]
     public float puddleWashRadius = 0.16f;
 
+    [Header("Step 2 Strict Perineal Wash Validation")]
+    [Tooltip("Bounded trigger zone over the perineum used to strictly validate Step 2 pouring.")]
+    public Collider perinealWashZoneCollider;
+    [Tooltip("Continuous off-target pouring seconds required before logging Wrong_Washing_Area.")]
+    public float wrongPourDwellThreshold = 0.55f;
+    [Tooltip("Cooldown seconds between consecutive Wrong_Washing_Area penalties.")]
+    public float wrongPourPenaltyCooldown = 2.5f;
+
     private ParticleSystem.EmissionModule emissionModule;
     private bool isPouring = false;
-    private readonly RaycastHit[] hitBuffer = new RaycastHit[16];
+    private float offTargetPourTimer = 0f;
+    private float lastWrongPourPenaltyTime = -99f;
+    private readonly RaycastHit[] hitBuffer = new RaycastHit[32];
     private readonly HashSet<GameObject> processedObjects = new HashSet<GameObject>();
     private List<WashableIodinePuddle> cachedPuddles = new List<WashableIodinePuddle>();
 
     void Awake()
     {
+        ResolvePerinealWashZone();
         CachePuddles();
         SyncParticleSystemToSpout();
     }
@@ -46,8 +58,30 @@ public class PitcherPour : MonoBehaviour
             emissionModule = waterParticleSystem.emission;
             emissionModule.rateOverTime = 0f;
         }
+        ResolvePerinealWashZone();
         CachePuddles();
         SyncParticleSystemToSpout();
+    }
+
+    public void ResolvePerinealWashZone()
+    {
+        if (perinealWashZoneCollider == null)
+        {
+            var gizmo = FindFirstObjectByType<PerinealWashZoneGizmo>(FindObjectsInactive.Exclude);
+            if (gizmo != null)
+            {
+                perinealWashZoneCollider = gizmo.GetComponent<Collider>();
+            }
+        }
+
+        if (perinealWashZoneCollider == null)
+        {
+            var zoneObj = GameObject.Find("Perineal_Wash_Zone");
+            if (zoneObj != null)
+            {
+                perinealWashZoneCollider = zoneObj.GetComponent<Collider>();
+            }
+        }
     }
 
     public void CachePuddles()
@@ -112,6 +146,7 @@ public class PitcherPour : MonoBehaviour
     private void StopPouring()
     {
         isPouring = false;
+        offTargetPourTimer = 0f;
         if (waterParticleSystem != null)
         {
             emissionModule.rateOverTime = 0f;
@@ -120,17 +155,40 @@ public class PitcherPour : MonoBehaviour
 
     private void CastWaterRay()
     {
+        PerinealCareState currentState = PerinealCareManager.Instance != null
+            ? PerinealCareManager.Instance.currentState
+            : PerinealCareState.STATE_1_TALK_TO_MOTHER;
+        bool isStep2Wash = currentState == PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH;
+        bool isStep4Rinse = currentState == PerinealCareState.STATE_4_ANTISEPTIC_RINSE;
+
+        if (isStep2Wash && perinealWashZoneCollider == null)
+        {
+            ResolvePerinealWashZone();
+        }
+
         Transform originT = spoutOrigin != null ? spoutOrigin : transform;
         Vector3 rayOrigin = originT.position;
         Vector3 rayDir = Vector3.down;
         Ray ray = new Ray(rayOrigin, rayDir);
         int hitCount = Physics.SphereCastNonAlloc(ray, waterStreamRadius, hitBuffer, pourDistance, ~0, QueryTriggerInteraction.Collide);
-        
+
         processedObjects.Clear();
-        bool hitMotherPerineum = false;
+        bool hitPerinealWashZone = false;
+        bool hitWrongMotherArea = false;
+        string wrongAreaName = "";
         Vector3 primaryHitPoint = rayOrigin + rayDir * pourDistance;
         float closestHitDist = float.MaxValue;
         WashableIodinePuddle lastDirectPuddle = null;
+
+        // Also check direct overlap in case the spout tip enters the Perineal_Wash_Zone volume
+        if (perinealWashZoneCollider != null && perinealWashZoneCollider.enabled && perinealWashZoneCollider.gameObject.activeInHierarchy)
+        {
+            Vector3 closestPt = perinealWashZoneCollider.ClosestPoint(rayOrigin);
+            if ((closestPt - rayOrigin).sqrMagnitude <= waterStreamRadius * waterStreamRadius)
+            {
+                hitPerinealWashZone = true;
+            }
+        }
 
         for (int i = 0; i < hitCount; i++)
         {
@@ -150,62 +208,104 @@ public class PitcherPour : MonoBehaviour
                 primaryHitPoint = hitBuffer[i].point;
             }
 
-            // Check if water hit mother anatomy / perineal zone
-            if (col.transform.root.name.Contains("Mother") || col.transform.root.name.Contains("MODEL") || go.name.Contains("Mother") || go.name.Contains("StrokeZone") || go.name.Contains("bodyfinal") || go.name.Contains("pelvis") || go.name.Contains("Perineal"))
+            if (isStep4Rinse)
             {
-                hitMotherPerineum = true;
+                WashableIodinePuddle directPuddle = col.GetComponent<WashableIodinePuddle>()
+                                                 ?? col.GetComponentInParent<WashableIodinePuddle>()
+                                                 ?? col.GetComponentInChildren<WashableIodinePuddle>();
+                if (directPuddle != null)
+                {
+                    directPuddle.WashWithWater(Time.deltaTime);
+                    lastDirectPuddle = directPuddle;
+                    hitPerinealWashZone = true;
+                    continue;
+                }
             }
 
-            // Direct collider wash if present
-            WashableIodinePuddle directPuddle = col.GetComponent<WashableIodinePuddle>()
-                                             ?? col.GetComponentInParent<WashableIodinePuddle>()
-                                             ?? col.GetComponentInChildren<WashableIodinePuddle>();
-            if (directPuddle != null)
+            ClassifyStep2Collider(col, perinealWashZoneCollider, out bool isPerinealTarget, out bool isWrongMother);
+            if (isPerinealTarget)
             {
-                directPuddle.WashWithWater(Time.deltaTime);
-                lastDirectPuddle = directPuddle;
+                hitPerinealWashZone = true;
+            }
+            else if (isWrongMother)
+            {
+                hitWrongMotherArea = true;
+                if (string.IsNullOrEmpty(wrongAreaName)) wrongAreaName = go.name;
             }
         }
 
-        // Proximity wash for puddles
-        if (cachedPuddles == null || cachedPuddles.Count == 0) CachePuddles();
-
-        if (cachedPuddles != null && cachedPuddles.Count > 0)
+        // Step 4 Antiseptic Rinse washes across all Mother_Betadine_Canvas puddles (unchanged behavior)
+        if (isStep4Rinse)
         {
-            for (int p = 0; p < cachedPuddles.Count; p++)
+            bool hitMotherForRinse = hitPerinealWashZone || hitWrongMotherArea;
+
+            if (cachedPuddles == null || cachedPuddles.Count == 0) CachePuddles();
+
+            if (cachedPuddles != null && cachedPuddles.Count > 0)
             {
-                var pud = cachedPuddles[p];
-                if (pud == null || !pud.isPuddleActive || pud.isFullyWashed) continue;
-                if (lastDirectPuddle != null && pud == lastDirectPuddle) continue; // Avoid double-washing in a single frame
-
-                Vector3 pudPos = pud.puddle75Object != null ? pud.puddle75Object.transform.position : pud.transform.position;
-
-                // Check distance from puddle to primary hit point
-                float distToHitPoint = Vector3.Distance(primaryHitPoint, pudPos);
-
-                // Also check perpendicular distance from puddle to the vertical water ray
-                Vector3 toPuddle = pudPos - rayOrigin;
-                float downProj = Vector3.Dot(toPuddle, rayDir);
-                bool inVerticalRange = (downProj >= 0f && downProj <= pourDistance + 0.1f);
-                float distToRay = inVerticalRange ? Vector3.Cross(rayDir, toPuddle).magnitude : float.MaxValue;
-
-                if (distToHitPoint <= puddleWashRadius || distToRay <= puddleWashRadius || (hitMotherPerineum && distToHitPoint <= puddleWashRadius * 1.5f))
+                for (int p = 0; p < cachedPuddles.Count; p++)
                 {
-                    pud.WashWithWater(Time.deltaTime);
+                    var pud = cachedPuddles[p];
+                    if (pud == null || !pud.isPuddleActive || pud.isFullyWashed) continue;
+                    if (lastDirectPuddle != null && pud == lastDirectPuddle) continue; // Avoid double-washing in a single frame
+
+                    Vector3 pudPos = pud.puddle75Object != null ? pud.puddle75Object.transform.position : pud.transform.position;
+
+                    float distToHitPoint = Vector3.Distance(primaryHitPoint, pudPos);
+                    Vector3 toPuddle = pudPos - rayOrigin;
+                    float downProj = Vector3.Dot(toPuddle, rayDir);
+                    bool inVerticalRange = (downProj >= 0f && downProj <= pourDistance + 0.1f);
+                    float distToRay = inVerticalRange ? Vector3.Cross(rayDir, toPuddle).magnitude : float.MaxValue;
+
+                    if (distToHitPoint <= puddleWashRadius || distToRay <= puddleWashRadius || (hitMotherForRinse && distToHitPoint <= puddleWashRadius * 1.5f))
+                    {
+                        pud.WashWithWater(Time.deltaTime);
+                    }
                 }
             }
         }
 
         if (PerinealCareManager.Instance == null || PerinealCareManager.Instance.cleaningProgressUI == null) return;
 
-        // 1. Step 2: Preliminary Water Wash Progress
-        if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH && hitMotherPerineum)
+        // 1. Step 2: Strict Perineal Wash Zone Only (rejects legs, thighs, abdomen, buttocks outside Perineal_Wash_Zone)
+        if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_2_PRELIMINARY_WATER_WASH)
         {
-            PerinealCareManager.Instance.cleaningProgressUI.ReportWashStep1(Time.deltaTime);
+            if (hitPerinealWashZone)
+            {
+                offTargetPourTimer = 0f;
+                PerinealCareManager.Instance.cleaningProgressUI.ReportWashStep1(Time.deltaTime);
+            }
+            else if (hitWrongMotherArea)
+            {
+                offTargetPourTimer += Time.deltaTime;
+                if (offTargetPourTimer >= wrongPourDwellThreshold && Time.time - lastWrongPourPenaltyTime >= wrongPourPenaltyCooldown)
+                {
+                    offTargetPourTimer = 0f;
+                    lastWrongPourPenaltyTime = Time.time;
+
+                    string areaLabel = FormatOffTargetAreaLabel(wrongAreaName);
+                    if (VRDemoGameManager.Instance != null)
+                    {
+                        VRDemoGameManager.Instance.RecordViolation(
+                            ClinicalViolationType.Wrong_Washing_Area,
+                            $"Poured water onto {areaLabel} instead of perineum");
+                        VRDemoGameManager.Instance.ShowWarning($"Pour warm water onto the perineal area only (avoid {areaLabel}).");
+                    }
+                    if (VRHeadsetVisualFeedback.Instance != null)
+                    {
+                        VRHeadsetVisualFeedback.Instance.PlayFeedbackCuesOnly(0.55f, 0.25f);
+                    }
+                }
+            }
+            else
+            {
+                offTargetPourTimer = 0f;
+            }
         }
-        // 2. Step 4: Antiseptic Water Rinse Progress
+        // 2. Step 4: Antiseptic Water Rinse Progress (washes off light-green 7.5% Betadine puddles across canvas — unchanged)
         else if (PerinealCareManager.Instance.currentState == PerinealCareState.STATE_4_ANTISEPTIC_RINSE)
         {
+            offTargetPourTimer = 0f;
             if (cachedPuddles != null && cachedPuddles.Count > 0)
             {
                 float totalCleanliness = 0f;
@@ -225,6 +325,71 @@ public class PitcherPour : MonoBehaviour
                 PerinealCareManager.Instance.cleaningProgressUI.UpdateRinseProgress(progress);
             }
         }
+        else
+        {
+            offTargetPourTimer = 0f;
+        }
+    }
+
+    /// <summary>
+    /// Classifies a Step 2 water stream collider hit strictly against the designated Perineal_Wash_Zone collider
+    /// vs non-perineal anatomical regions (legs, inner thighs, abdomen, buttocks).
+    /// </summary>
+    public static void ClassifyStep2Collider(
+        Collider col,
+        Collider designatedWashZone,
+        out bool isPerinealTarget,
+        out bool isNonPerinealMother)
+    {
+        if (col == null)
+        {
+            isPerinealTarget = false;
+            isNonPerinealMother = false;
+            return;
+        }
+
+        GameObject go = col.gameObject;
+        if ((designatedWashZone != null && col == designatedWashZone)
+            || go.name == "Perineal_Wash_Zone"
+            || go.name.StartsWith("Perineal_Wash", StringComparison.OrdinalIgnoreCase)
+            || col.GetComponentInParent<PerinealWashZoneGizmo>() != null)
+        {
+            isPerinealTarget = true;
+            isNonPerinealMother = false;
+            return;
+        }
+
+        isPerinealTarget = false;
+        isNonPerinealMother = IsNonPerinealMotherCollider(col, go);
+    }
+
+    private static bool IsNonPerinealMotherCollider(Collider col, GameObject go)
+    {
+        if (go.name == "Perineal_Wash_Zone"
+            || go.name.StartsWith("Perineal_Wash", StringComparison.OrdinalIgnoreCase)
+            || col.GetComponentInParent<PerinealWashZoneGizmo>() != null)
+        {
+            return false;
+        }
+
+        string rootName = col.transform.root.name;
+        return rootName.Contains("Mother") || rootName.Contains("MODEL") ||
+               go.name.Contains("Mother") || go.name.Contains("bodyfinal") ||
+               go.name.Contains("pelvis") || go.name.Contains("Leg") ||
+               go.name.Contains("Thigh") || go.name.Contains("Abdominal") ||
+               go.name.Contains("Buttock");
+    }
+
+    private static string FormatOffTargetAreaLabel(string rawName)
+    {
+        if (string.IsNullOrEmpty(rawName)) return "surrounding skin";
+        string lower = rawName.ToLowerInvariant();
+        if (lower.Contains("left") && (lower.Contains("leg") || lower.Contains("thigh"))) return "left thigh/leg";
+        if (lower.Contains("right") && (lower.Contains("leg") || lower.Contains("thigh"))) return "right thigh/leg";
+        if (lower.Contains("leg") || lower.Contains("thigh")) return "thigh/leg";
+        if (lower.Contains("abdom")) return "abdomen";
+        if (lower.Contains("buttock")) return "buttocks";
+        return "surrounding body area";
     }
 
     private void OnDrawGizmosSelected()

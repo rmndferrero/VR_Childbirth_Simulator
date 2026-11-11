@@ -196,24 +196,27 @@ public class StrokeAreaVisualGuide : MonoBehaviour
 
     private void HandleMistakeZoneTriggered(int mistakeIndex)
     {
-        if (trackingManager != null && mistakeIndex < trackingManager.GetCurrentStrokeIndex())
+        if (trackingManager != null && trackingManager.IsStrokeCompleted(mistakeIndex))
         {
             return;
         }
 
+        int threshold = trackingManager != null ? trackingManager.GetMistakesRequiredForHint() : mistakesRequiredForHint;
         activeStrokeMistakeCount++;
         currentMistakeIndex = mistakeIndex;
         mistakeFlashTimer = (trackingManager != null) ? trackingManager.mistakeLockoutDuration : 1.25f;
 
-        if (activeStrokeMistakeCount >= mistakesRequiredForHint)
+        if (activeStrokeMistakeCount >= threshold)
         {
-            Debug.Log($"[StrokeAreaVisualGuide] Hint Triggered on Stroke {currentActiveIndex + 1}! ({activeStrokeMistakeCount} mistakes made). Pulsing active stroke reticle as guide.");
+            Debug.Log($"[StrokeAreaVisualGuide] Warm-Gold Hint Triggered ({activeStrokeMistakeCount} mistakes). Highlighting valid zone(s): {(trackingManager != null ? trackingManager.GetValidChoicesSummary() : $"Stroke {currentActiveIndex + 1}")}");
         }
     }
 
     private void HandleStrokeProgressUpdated(int strokeIndex, float progress, Vector3 handlePos)
     {
-        if (strokeIndex == currentActiveIndex && sliders != null && strokeIndex >= 0 && strokeIndex < sliders.Length)
+        bool isValidOrActive = strokeIndex == currentActiveIndex
+            || (trackingManager != null && trackingManager.IsStrokeValidNow(strokeIndex));
+        if (isValidOrActive && sliders != null && strokeIndex >= 0 && strokeIndex < sliders.Length)
         {
             var slider = sliders[strokeIndex];
             if (slider != null)
@@ -284,6 +287,19 @@ public class StrokeAreaVisualGuide : MonoBehaviour
     }
 
     /// <summary>
+    /// Refreshes slider visual states immediately from StrokeTrackingManager (useful after programmatic resets or in tests).
+    /// </summary>
+    public void RefreshVisualsImmediate()
+    {
+        if (trackingManager != null)
+        {
+            currentActiveIndex = trackingManager.GetCurrentStrokeIndex();
+            activeStrokeMistakeCount = trackingManager.GetActiveStrokeMistakeCount();
+        }
+        UpdateVisuals();
+    }
+
+    /// <summary>
     /// Updates all 9 sliders:
     /// - When NOT holding cotton in handling forceps (or outside stroke phases): All guides are hidden.
     /// - Completed strokes (i < currentActiveIndex): Guides disappear immediately, replaced by the washable Betadine puddle on the skin.
@@ -296,10 +312,15 @@ public class StrokeAreaVisualGuide : MonoBehaviour
     {
         if (sliders == null || sliders.Length == 0) return;
 
-        bool showGuides = IsCottonInHandlingForceps() && IsInPerinealStrokePhase() && currentActiveIndex < 9;
-        bool shouldPulseActiveHint = activeStrokeMistakeCount >= mistakesRequiredForHint;
+        bool procedureIncomplete = trackingManager == null
+            ? currentActiveIndex < 9
+            : trackingManager.GetCompletedStrokeCount() < 9;
+        bool showGuides = IsCottonInHandlingForceps() && IsInPerinealStrokePhase() && procedureIncomplete;
+        int requiredMistakes = trackingManager != null ? trackingManager.GetMistakesRequiredForHint() : mistakesRequiredForHint;
+        bool shouldPulseActiveHint = activeStrokeMistakeCount >= requiredMistakes;
         float activeProgress = (trackingManager != null) ? trackingManager.GetCurrentStrokeProgress() : 0f;
         bool isActivelyWiping = activeProgress > 0.01f;
+        int activeAttemptZone = trackingManager != null ? trackingManager.GetActiveAttemptZoneIndex() : currentActiveIndex;
 
         for (int i = 0; i < sliders.Length; i++)
         {
@@ -312,8 +333,10 @@ public class StrokeAreaVisualGuide : MonoBehaviour
                 slider.gameObject.SetActive(true);
             }
 
+            bool isCompleted = trackingManager != null ? trackingManager.IsStrokeCompleted(i) : i < currentActiveIndex;
+
             // 1. Not holding cotton or stroke already completed -> Hide guide (leaving only the Betadine puddle on completed strokes)
-            if (!showGuides || i < currentActiveIndex)
+            if (!showGuides || isCompleted)
             {
                 slider.SetVisualElementsVisible(false);
                 continue;
@@ -322,26 +345,29 @@ public class StrokeAreaVisualGuide : MonoBehaviour
             // 2. Remaining uncompleted stroke while holding cotton in handling forceps
             slider.SetVisualElementsVisible(true);
 
-            if (i == currentActiveIndex)
+            bool isZoneWiping = isActivelyWiping && (i == activeAttemptZone || (activeAttemptZone < 0 && i == currentActiveIndex));
+            bool isCandidateValidNow = trackingManager != null ? trackingManager.IsStrokeValidNow(i) : (i == currentActiveIndex);
+
+            if (isZoneWiping)
             {
-                if (isActivelyWiping)
-                {
-                    slider.SetVisualState(SliderVisualState.Active);
-                }
-                else if (shouldPulseActiveHint || !hideGuidesUnlessError)
-                {
-                    slider.SetVisualState(SliderVisualState.Active);
-                    slider.UpdatePulseHint(Time.time);
-                }
-                else
-                {
-                    // Decision Stage (< 3 mistakes): Render identically to upcoming strokes so the player decides from memory!
-                    slider.SetVisualState(SliderVisualState.Upcoming);
-                }
+                slider.SetVisualState(SliderVisualState.Active, force: slider.IsShowingHintTracer);
+            }
+            else if (currentMistakeIndex == i && mistakeFlashTimer > 0f)
+            {
+                slider.SetVisualState(SliderVisualState.Mistake);
+            }
+            else if (isCandidateValidNow && (shouldPulseActiveHint || !hideGuidesUnlessError))
+            {
+                slider.SetVisualState(SliderVisualState.Active);
+                slider.UpdatePulseHint(Time.time);
+            }
+            else if (shouldPulseActiveHint || !hideGuidesUnlessError)
+            {
+                slider.SetVisualState(SliderVisualState.Dimmed);
             }
             else
             {
-                // Upcoming candidate stroke: Subtle semi-transparent holographic blueprint
+                // Decision Stage (< 3 mistakes): Render identically to upcoming strokes so the player decides from memory!
                 slider.SetVisualState(SliderVisualState.Upcoming);
             }
         }

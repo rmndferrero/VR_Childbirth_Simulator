@@ -199,11 +199,10 @@ public class ForcepsController : MonoBehaviour
         Transform t = args.interactorObject.transform;
         string handName = FindHandName(t);
 
-        if (handName.Contains("LEFT")) isHeldByLeftHand = true;
-        else if (handName.Contains("RIGHT")) isHeldByRightHand = true;
-        else
+        isHeldByLeftHand = handName.Contains("LEFT");
+        isHeldByRightHand = handName.Contains("RIGHT");
+        if (!isHeldByLeftHand && !isHeldByRightHand)
         {
-            isHeldByRightHand = true;
             Debug.Log("[Forceps] Grabbed by " + t.name);
         }
 
@@ -283,30 +282,28 @@ public class ForcepsController : MonoBehaviour
         // Only run logic if the forceps are actually being held
         if (!IsGrabbed && !isHeldByLeftHand && !isHeldByRightHand) return;
 
-        bool isPressingButton = false;
-        bool aPressed = rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.IsPressed();
-        bool xPressed = leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.IsPressed();
-
-        if (aPressed || xPressed)
-        {
-            isPressingButton = true;
-        }
+        bool holdPressed = IsPrimaryButtonPressedForHeldHand();
 
         // -------------------------------------------------------------
         // ROLE 1: PICKUP FORCEPS
         // -------------------------------------------------------------
         if (role == ForcepsRole.Pickup)
         {
-            // Inside the jar zone: holding button extracts cotton
-            if (isInJarZone && isPressingButton && !HasCotton && !isSpawning)
+            if (!HasCotton && cottonSocket != null && cottonSocket.socketActive)
+            {
+                cottonSocket.socketActive = false;
+            }
+
+            // Inside the jar zone: holding primary button extracts cotton
+            if (isInJarZone && holdPressed && !HasCotton && !isSpawning)
             {
                 SpawnCotton();
             }
 
-            // Securely retain cotton once picked up so player can carry it to Handling Forceps without falling
-            if (HasCotton && cottonSocket != null)
+            // Hold-to-clamp parity with Handling Forceps: hold primary button to retain cotton; release to drop
+            if (HasCotton)
             {
-                cottonSocket.socketActive = true;
+                UpdateCottonClamping(holdPressed);
             }
         }
         // -------------------------------------------------------------
@@ -321,59 +318,58 @@ public class ForcepsController : MonoBehaviour
             }
 
             // TRANSFER LOGIC: Only happens when Handling Forceps has no cotton, Pickup Forceps HAS cotton,
-            // tips are in range (<= transferDistance), AND player explicitly PRESSES Button A (WasPressedThisFrame)!
-            // It will NEVER transfer automatically like a magnet just by being close!
+            // tips are in range (<= transferDistance), AND player explicitly PRESSES Button A/X (WasPressedThisFrame)!
             if (!HasCotton && otherForceps != null && otherForceps.HasCotton && cottonSocket != null && otherForceps.cottonSocket != null)
             {
                 float distance = Vector3.Distance(cottonSocket.transform.position, otherForceps.cottonSocket.transform.position);
-                if (distance <= transferDistance)
+                if (distance <= transferDistance && WasPrimaryButtonPressedThisFrameForHeldHand())
                 {
-                    bool transferPressed = false;
-                    if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action != null)
-                        transferPressed = rightPrimaryButton.action.WasPressedThisFrame();
-                    else if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action != null)
-                        transferPressed = leftPrimaryButton.action.WasPressedThisFrame();
-                    else
-                    {
-                        bool a = (rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.WasPressedThisFrame());
-                        bool x = (leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.WasPressedThisFrame());
-                        transferPressed = a || x;
-                    }
-
-                    if (transferPressed)
-                    {
-                        TryStealCotton();
-                    }
+                    TryStealCotton();
                 }
             }
 
-            // Clamping while holding cotton:
-            // Holding Button A keeps the cotton firmly clamped during wiping.
-            // Letting go of Button A drops the cotton into the waste basin.
+            // Holding primary button keeps the cotton firmly clamped; letting go drops the cotton.
             if (HasCotton)
             {
-                bool holdClamped = false;
-                if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action != null)
-                    holdClamped = rightPrimaryButton.action.IsPressed();
-                else if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action != null)
-                    holdClamped = leftPrimaryButton.action.IsPressed();
-                else
-                {
-                    bool a = (rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.IsPressed());
-                    bool x = (leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.IsPressed());
-                    holdClamped = a || x;
-                }
-
-                if (holdClamped)
-                {
-                    if (cottonSocket != null) cottonSocket.socketActive = true;
-                }
-                else
-                {
-                    DropCotton();
-                    if (cottonSocket != null) cottonSocket.socketActive = false;
-                }
+                UpdateCottonClamping(holdPressed);
             }
+        }
+    }
+
+    private bool IsPrimaryButtonPressedForHeldHand()
+    {
+        if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action != null)
+            return rightPrimaryButton.action.IsPressed();
+        if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action != null)
+            return leftPrimaryButton.action.IsPressed();
+
+        bool a = rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.IsPressed();
+        bool x = leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.IsPressed();
+        return a || x;
+    }
+
+    private bool WasPrimaryButtonPressedThisFrameForHeldHand()
+    {
+        if (isHeldByRightHand && rightPrimaryButton != null && rightPrimaryButton.action != null)
+            return rightPrimaryButton.action.WasPressedThisFrame();
+        if (isHeldByLeftHand && leftPrimaryButton != null && leftPrimaryButton.action != null)
+            return leftPrimaryButton.action.WasPressedThisFrame();
+
+        bool a = rightPrimaryButton != null && rightPrimaryButton.action != null && rightPrimaryButton.action.WasPressedThisFrame();
+        bool x = leftPrimaryButton != null && leftPrimaryButton.action != null && leftPrimaryButton.action.WasPressedThisFrame();
+        return a || x;
+    }
+
+    private void UpdateCottonClamping(bool holdClamped)
+    {
+        if (holdClamped)
+        {
+            if (cottonSocket != null) cottonSocket.socketActive = true;
+        }
+        else
+        {
+            DropCotton();
+            if (cottonSocket != null) cottonSocket.socketActive = false;
         }
     }
 

@@ -172,13 +172,6 @@ public class EvaluationLogger
             e.count = n;
         }
         events.Add(e);
-
-        // Severe response: red POV tint only (no blocking, no score change). Restarting an existing flash is harmless.
-        if (!e.isCorrect && e.severity == MistakeSeverity.Severe && VRHeadsetVisualFeedback.Instance != null)
-        {
-            VRHeadsetVisualFeedback.Instance.FlashRedVignette(1.6f);
-        }
-
         OnEventLogged?.Invoke(e);
         return e;
     }

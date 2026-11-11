@@ -54,6 +54,7 @@ public class TablePrepManager : MonoBehaviour
 
     private void Start()
     {
+        isMayoDraped = MayoStandDrapeSocket.Instance != null && MayoStandDrapeSocket.Instance.isDraped;
         CacheSlots();
     }
 
@@ -143,33 +144,44 @@ public class TablePrepManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Checks if a tool released near Table 2 should snap to a slot or be rejected.
+    /// Checks if a tool released near Table 2 should snap to a slot or be rejected immediately (Option 2A).
     /// Returns true if handled by TablePrepManager.
     /// </summary>
     public bool TryHandleToolRelease(ToolItem tool)
     {
-        if (tool == null) return false;
+        if (tool == null || tool.GetComponent<TwoHandedLinenCloth>() != null) return false;
 
         CacheSlots();
 
-        TablePrepSlot closestSlot = null;
-        float closestDist = float.MaxValue;
+        TablePrepSlot closestAvailableSlot = null;
+        float closestAvailableDist = float.MaxValue;
+        TablePrepSlot closestAnySlot = null;
+        float closestAnyDist = float.MaxValue;
 
         Vector3 toolPos = tool.transform.position;
 
         foreach (var slot in slots)
         {
-            if (slot == null || slot.snapTransform == null) continue;
+            if (slot == null) continue;
 
-            float dist = Vector3.Distance(toolPos, slot.snapTransform.position);
-            if (dist <= slot.snapRadius && dist < closestDist)
+            float dist = Vector3.Distance(toolPos, slot.GetTargetSnapPosition());
+            if (dist > slot.snapRadius) continue;
+
+            if (dist < closestAnyDist)
             {
-                closestDist = dist;
-                closestSlot = slot;
+                closestAnyDist = dist;
+                closestAnySlot = slot;
+            }
+
+            bool slotFreeOrSameTool = !slot.isFilled || slot.currentPlacedTool == null || slot.currentPlacedTool == tool;
+            if (slotFreeOrSameTool && dist < closestAvailableDist)
+            {
+                closestAvailableDist = dist;
+                closestAvailableSlot = slot;
             }
         }
 
-        if (closestSlot == null)
+        if (closestAnySlot == null)
         {
             // Not near any Table 2 slot
             return false;
@@ -184,31 +196,58 @@ public class TablePrepManager : MonoBehaviour
                 VRHeadsetVisualFeedback.Instance.TriggerUnsterileMayoViolation(tool.toolID);
             }
             PlaySound(wrongSlotClip);
-            closestSlot.RejectWrongTool(tool);
+            closestAnySlot.RejectWrongTool(tool);
             return true;
         }
 
         if (!isTablePrepActive || isTablePrepCompleted) return false;
 
-        // If the tool was already placed in this slot, re-snap it cleanly into place
-        if (closestSlot.isFilled && closestSlot.currentPlacedTool != null)
+        if (closestAvailableSlot == null)
         {
-            if (closestSlot.currentPlacedTool == tool)
-            {
-                closestSlot.SnapCorrectTool(tool);
-                PlaySound(correctSlotClip);
-                return true;
-            }
-            PlaySound(wrongSlotClip);
+            // All nearby slots within snapRadius are already occupied; let release proceed without spoiling validity
             return false;
         }
 
-        // Snap tool into this slot
-        closestSlot.SnapCorrectTool(tool);
+        // Ensure a moved tool cannot remain registered in an old slot simultaneously
+        foreach (var slot in slots)
+        {
+            if (slot != null && slot != closestAvailableSlot && slot.currentPlacedTool == tool)
+            {
+                slot.ClearSlot();
+            }
+        }
+
+        // Blind slotting: snap ANY dropped surgical instrument neutrally with zero pass/fail feedback until Submit
+        closestAvailableSlot.SnapCorrectTool(tool);
         PlaySound(correctSlotClip);
 
         UpdateStatusUI();
         return true;
+    }
+
+    public void NotifyToolPickedUp(ToolItem tool)
+    {
+        if (tool == null) return;
+        CacheSlots();
+        bool changed = false;
+        foreach (var slot in slots)
+        {
+            if (slot != null && slot.isFilled && slot.currentPlacedTool == tool)
+            {
+                slot.ClearSlot();
+                changed = true;
+            }
+        }
+        if (changed) UpdateStatusUI();
+    }
+
+    private void RecordWrongSlotAttempt(TablePrepSlot slot, ToolItem tool)
+    {
+        string expected = slot != null
+            ? (slot.assignedTool != null ? VRDemoGameManager.NormalizeToolDisplayName(slot.assignedTool.toolID) : (!string.IsNullOrEmpty(slot.assignedToolID) ? slot.assignedToolID : $"Slot {slot.slotNumber}"))
+            : "Designated Slot";
+        string actual = tool != null ? VRDemoGameManager.NormalizeToolDisplayName(tool.toolID) : "Instrument";
+        RecordMistake($"Slot {slot?.slotNumber}: placed {actual} instead of {expected}");
     }
 
     /// <summary>
@@ -288,6 +327,11 @@ public class TablePrepManager : MonoBehaviour
             PlaySound(wrongSlotClip);
             RecordMistake($"Incorrect Mayo Table Setup: {wrongSlots.Count} instruments misplaced on the tray.");
 
+            if (VRHeadsetVisualFeedback.Instance != null)
+            {
+                VRHeadsetVisualFeedback.Instance.PlayFeedbackCuesOnly();
+            }
+
             if (confirmationUI != null)
             {
                 confirmationUI.ShowWrongFeedback(wrongSlots.Count);
@@ -366,6 +410,10 @@ public class TablePrepManager : MonoBehaviour
         else if (PerinealCareManager.Instance != null)
         {
             PerinealCareManager.Instance.RecordClinicalViolation(reason, 5);
+        }
+        else
+        {
+            EvaluationLogger.Instance.LogViolation(ClinicalViolationType.Incorrect_Table_Slot, "Incorrect table slot", reason, 5, true);
         }
     }
 

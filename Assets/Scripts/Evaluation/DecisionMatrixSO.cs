@@ -133,6 +133,7 @@ public class DecisionMatrixSO : ScriptableObject
             R(ClinicalViolationType.Floor_Drop_Instrument, St, Mod, "Keep instruments and linen over the sterile field; return them to the tray."),
             R(ClinicalViolationType.Contaminated_Drop_Outside_Basin, St, Sev, "Discard used cotton only into the waste basin."),
             R(ClinicalViolationType.Forceps_Transfer_Error, Te, Mod, "Take cotton from the jar with the Pickup forceps only, transfer it to the Handling forceps, and wipe with the Handling forceps."),
+            R(ClinicalViolationType.Wrong_Washing_Area, Te, Mod, "Pour warm water only over the perineal area from front to back (not onto the thighs, legs, or abdomen)."),
         };
     }
 }

@@ -758,22 +758,10 @@ public static class SetupSimulationSceneFlow
         canvasObj.AddComponent<VRHeadFollower>();
 
         var rt = canvasObj.GetComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(800f, 520f);
-        rt.localScale = Vector3.one * 0.0020f;
+        rt.sizeDelta = new Vector2(820f, 620f);
+        rt.localScale = Vector3.one * 0.0019f;
 
         var summaryScreenRoot = BuildSimulationUI.BuildSummaryScreen(canvasObj.transform, font);
-        var controller = summaryScreenRoot.GetComponent<SummaryScreenController>();
-
-        var footer = summaryScreenRoot.transform.Find("FooterBar");
-        if (footer != null)
-        {
-            var sfButtonSprite = AssetDatabase.LoadAssetAtPath<Sprite>(SfButtonSpritePath);
-            var menuBtnObj = CreateMedicalButton("Button_MainMenu", footer, "⌂ Main Menu",
-                sfButtonSprite, new Color(0.14f, 0.22f, 0.34f, 0.92f), new Color(0.38f, 0.82f, 0.98f, 0.80f), 13f, font);
-            SetRect(menuBtnObj.GetComponent<RectTransform>(), new Vector2(0.26f, 0.15f), new Vector2(0.48f, 0.85f));
-            if (controller != null) controller.buttonMainMenu = menuBtnObj.GetComponent<Button>();
-        }
-
         summaryScreenRoot.SetActive(true);
 
         EditorSceneManager.SaveScene(scene, SummaryScenePath);
