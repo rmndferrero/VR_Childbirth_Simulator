@@ -45,5 +45,6 @@ crashlytics-build.properties
 .Trashes
 ehthumbs.db
 Thumbs.db
-
+Thumbs.db.meta
+ehthumbs.db.meta
 .vs/
